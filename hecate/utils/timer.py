@@ -7,7 +7,7 @@
 # ID: timer.py [] allen.leis@gmail.com $
 
 """
-Provides timing functionality for the Mantle application.
+Provides timing functionality for the Hecate application.
 """
 
 ##########################################################################

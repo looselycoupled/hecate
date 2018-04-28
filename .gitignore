@@ -100,8 +100,8 @@ ENV/
 # mypy
 .mypy_cache/
 
-# Mantle internal
-mantle.yaml
+# Hecate internal
+hecate.yaml
 fixture-maker.py
 scripts/
 
@@ -114,4 +114,3 @@ scripts/
 
 # Celery related
 celerybeat.pid
-

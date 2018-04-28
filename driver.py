@@ -1,41 +1,26 @@
-# package.module
-# module description
+#!/usr/bin/env python3
+# admin
+# Management script for the hecate process and runner.
 #
-# Author:   Allen Leis <allen.leis@gmail.com>
-# Created:  timestamp
+# Created: Tue Jun 27 15:03:37 2017 -0400
+# Author: Allen Leis
 #
-# Copyright (C) 2017 Allen Leis
-# For license information, see LICENSE
-#
-# ID: filename.py [] allen.leis@gmail.com $
+# ID: admin.py [] allen.leis@gmail.com $
 
 """
-module description
+Management script for the hecate process and runner.
 """
 
 ##########################################################################
-# Imports
+## Imports
 ##########################################################################
 
-import argparse
-
-
-##########################################################################
-# Classes
-##########################################################################
-
+from hecate.console import HecateUtility
 
 ##########################################################################
-# Execution
+## Load and execute the CLI utility
 ##########################################################################
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Exercise DQN')
-    # parser.add_argument('integers', metavar='N', type=int, nargs='+',
-    #                     help='an integer for the accumulator')
-    # parser.add_argument('--sum', dest='accumulate', action='store_const',
-    #                     const=sum, default=max,
-    #                     help='sum the integers (default: find the max)')
-
-    args = parser.parse_args()
-    print(args)
+    app = HecateUtility.load()
+    app.execute()
