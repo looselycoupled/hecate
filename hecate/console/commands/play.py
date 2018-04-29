@@ -13,12 +13,12 @@ class PlayCommand(LoggableMixin, Command):
             'type': str,
             'choices': ['Breakout-v0', ],
             'help': 'game to play ("Breakout-v0", etc.)',
-        }
+        },
         '--episodes': {
             'default': 100,
             'type': int,
             'help': 'episodes to play',
-        }
+        },
         '--steps': {
             'default': 1000,
             'type': int,

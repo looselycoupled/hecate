@@ -18,8 +18,8 @@ import time
 
 from functools import wraps
 from datetime import timedelta
-from .timez import humanizedelta
 
+from dateutil.relativedelta import relativedelta
 
 ##########################################################################
 ## Decorator
@@ -44,6 +44,25 @@ def timeit(func, wall_clock=True):
 ##########################################################################
 ## Timer functions
 ##########################################################################
+
+def humanizedelta(*args, **kwargs):
+    """
+    Wrapper around dateutil.relativedelta (same construtor args) and returns
+    a humanized string representing the delta in a meaningful way.
+    """
+    if 'milliseconds' in kwargs:
+        sec  = kwargs.get('seconds', 0)
+        msec = kwargs.pop('milliseconds')
+        kwargs['seconds'] = sec + (float(msec) / 1000.0)
+
+    delta = relativedelta(*args, **kwargs)
+    attrs = ('years', 'months', 'days', 'hours', 'minutes', 'seconds')
+    parts = [
+        '%d %s' % (getattr(delta, attr), getattr(delta, attr) > 1 and attr or attr[:-1])
+        for attr in attrs if getattr(delta, attr)
+    ]
+
+    return " ".join(parts)
 
 class Timer(object):
     """
@@ -76,8 +95,7 @@ class Timer(object):
         self.elapsed  = self.finished - self.started
 
     def __str__(self):
-        return self.elapsed
-        # return humanizedelta(seconds=self.elapsed)
+        return humanizedelta(seconds=self.elapsed)
 
     @property
     def timedelta(self):
