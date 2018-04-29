@@ -1,4 +1,8 @@
-# DELETE LATER
+##########################################################################
+# Imports
+##########################################################################
+
+# DEV ONLY
 import time
 
 import os
@@ -15,10 +19,29 @@ from hecate.utils.timer import Timer
 from hecate.replay_buffer import ReplayBuffer
 
 
+##########################################################################
+# Helpers
+##########################################################################
+
 def _get_environment(name="Breakout-v0"):
     env = gym.envs.make(name)
     return env
 
+def _fix_reward(reward):
+    """
+    From: Playing atari with deep reinforcement learning (page 6)
+        ...we made one change to the reward structure of the games during training
+        only. Since the scale of scores varies greatly from game to game, we fixed
+        all positive rewards to be 1 and all negative rewards to be −1, leaving 0
+        rewards unchanged.
+    """
+    if reward == 0: return reward
+    if reward < 0: return -1
+    if reward > 0: return 1
+
+##########################################################################
+# Classes
+##########################################################################
 
 class StorageConfig(object):
     def __init__(self, base, game):
@@ -100,6 +123,13 @@ class Agent(LoggableMixin):
         self.action_space = list(range(self.action_size))
 
     def _populate_replay_memory(self):
+        """
+
+        From: Playing atari with deep reinforcement learning (page 5)
+            For the experiments in this paper, the function φ from algorithm 1 applies
+            this preprocessing to the last 4 frames of a history and stacks them to
+            produce the input to the Q-function.
+        """
         self.logger.info("_populate_replay_memory: populating memory replay buffer")
         step_result_fields = ["state", "reward", "game_over", "extras", "previous_state"]
         with Timer() as t:
@@ -108,6 +138,10 @@ class Agent(LoggableMixin):
                 action = random.randrange(self.action_size)
                 results = self.env.step(action) + (previous_state,)
                 record = dict(zip(step_result_fields, results))
+
+                record["reward"] = _fix_reward(record["reward"])
+                record["state"] = wrangle_image(record["state"])
+
                 self.replay_buffer.append(record)
 
                 if record["game_over"]:
@@ -133,6 +167,10 @@ class Agent(LoggableMixin):
 
 
 
+
+##########################################################################
+# Execution
+##########################################################################
 
 if __name__ == '__main__':
     tf.reset_default_graph()
