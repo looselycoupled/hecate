@@ -76,7 +76,8 @@ class Timer(object):
         self.elapsed  = self.finished - self.started
 
     def __str__(self):
-        return humanizedelta(seconds=self.elapsed)
+        return self.elapsed
+        # return humanizedelta(seconds=self.elapsed)
 
     @property
     def timedelta(self):

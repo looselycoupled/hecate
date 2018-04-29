@@ -39,7 +39,8 @@ class LoggingConfiguration(Configuration):
 
     formatters = {
         'simple': {
-            'format': '[%(asctime)s] %(levelname)s {%(name)s.%(funcName)s:%(lineno)d} %(message)s',
+            # 'format': '[%(asctime)s] %(levelname)s {%(name)s.%(funcName)s:%(lineno)d} %(message)s',
+            'format': '[%(asctime)s] %(levelname)s: %(message)s',
             'datefmt': '%Y-%m-%d %H:%M:%S %z',
         }
     }
