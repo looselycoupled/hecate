@@ -132,6 +132,24 @@ class Agent(LoggableMixin):
         """
         self.logger.info("_populate_replay_memory: populating memory replay buffer")
         step_result_fields = ["state", "reward", "game_over", "extras", "previous_state"]
+
+        import pandas as pd
+        pd.set_option('display.height', 0)
+        pd.set_option('display.max_rows', 0)
+        pd.set_option('display.max_columns', 0)
+        pd.set_option('display.width', 0)
+
+        RESIZE_METHOD = tf.image.ResizeMethod.NEAREST_NEIGHBOR
+        INPUT_SHAPE = [210, 160, 3]
+        OUTPUT_SHAPE = [84, 84]
+
+        game_display = tf.placeholder(shape=INPUT_SHAPE, dtype=tf.uint8)
+        output = tf.image.rgb_to_grayscale(game_display)
+        output = tf.image.crop_to_bounding_box(output, 34, 0, 160, 160)
+        output = tf.image.resize_images(output, OUTPUT_SHAPE, method=RESIZE_METHOD)
+        output = tf.squeeze(output)
+
+
         with Timer() as t:
             previous_state = self.env.reset()
             for step in tqdm.tqdm(range(self.populate_memory_steps)):
@@ -140,7 +158,11 @@ class Agent(LoggableMixin):
                 record = dict(zip(step_result_fields, results))
 
                 record["reward"] = _fix_reward(record["reward"])
-                record["state"] = wrangle_image(record["state"])
+                # record["state"] = wrangle_image(self.session, record["state"])
+                stuff = self.session.run(output, {game_display: record["state"]})
+
+                print(pd.DataFrame(stuff))
+                time.sleep(.5)
 
                 self.replay_buffer.append(record)
 
