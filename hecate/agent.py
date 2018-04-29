@@ -34,6 +34,8 @@ RESIZE_METHOD = tf.image.ResizeMethod.NEAREST_NEIGHBOR
 INPUT_SHAPE = [210, 160, 3]
 OUTPUT_SHAPE = [84, 84]
 
+STEP_RESULT_FIELDS = ["state", "reward", "game_over", "extras", "previous_state"]
+
 ##########################################################################
 # Helpers
 ##########################################################################
@@ -96,6 +98,7 @@ class Agent(LoggableMixin):
         populate_memory_steps=10000,
         upate_target_steps=10000,
         storage_path="data",
+        verbose=True,
     ):
         super(Agent, self).__init__()
         self.session = session
@@ -110,9 +113,12 @@ class Agent(LoggableMixin):
         self.model = tf.Variable(0, name='foo', trainable=False)
         self.saver = tf.train.Saver()
         self.replay_buffer = ReplayBuffer(2 * populate_memory_steps)
+        self.step_count = 0
         self.env = None
         self.action_size = None
         self.action_space = None
+
+        self.verbose = verbose
 
         self._init_image_wrangler()
         self._load_checkpoint()
@@ -157,7 +163,6 @@ class Agent(LoggableMixin):
             produce the input to the Q-function.
         """
         self.logger.info("_populate_replay_memory: populating memory replay buffer")
-        step_result_fields = ["state", "reward", "game_over", "extras", "previous_state"]
 
         with Timer() as t:
             previous_state = self.env.reset()
@@ -166,7 +171,7 @@ class Agent(LoggableMixin):
                 action = random.randrange(self.action_size)
                 results = self.env.step(action) + (previous_state,)
 
-                record = dict(zip(step_result_fields, results))
+                record = dict(zip(STEP_RESULT_FIELDS, results))
                 record["reward"] = _fix_reward(record["reward"])
                 record["state"] = self.wrangle_image(record["state"])
 
@@ -181,13 +186,67 @@ class Agent(LoggableMixin):
         self.logger.info("_populate_replay_memory: populated ({}) in {}".format(len(self.replay_buffer), t))
 
 
+
+    def _choose_action(self, episode_num):
+        epsilon = .5
+        if random.random() > epsilon:
+            return random.randrange(self.action_size)
+
+        # for now just return random instead of policy choice
+        return random.randrange(self.action_size)
+
     def train(self):
         self._init_env()
         self._log_configuration()
         self._populate_replay_memory()
+        total_reward = 0
+
+        # start games
+        for episode_num in range(self.episodes):
+            with Timer() as episode_timer:
+
+                previous_state = self.env.reset()
+                step = 0
+                rewards = 0
+
+                while True:
+                    self.step_count += 1
+                    step +=1
+
+                    action = self._choose_action(episode_num)
+
+                    # TODO: abstract this out (repetative code)
+                    results = self.env.step(action) + (previous_state,)
+                    record = dict(zip(STEP_RESULT_FIELDS, results))
+                    record["reward"] = _fix_reward(record["reward"])
+                    record["state"] = self.wrangle_image(record["state"])
+
+                    self.replay_buffer.append(record)
+                    previous_state = record["state"]
+                    rewards += record["reward"]
+
+                    # TODO: train model on random mini batch
 
 
+                    # TODO: update target network if needed
+                    if not self.step_count % 5000:
+                        pass
 
+                    if record["game_over"] or self.step_count >= self.steps:
+                        break
+
+            time.sleep(.005)
+            total_reward += rewards
+            self.logger.info("Episode {} completed in {}".format(episode_num, episode_timer))
+            if self.verbose:
+                self.logger.info("Episode Reward: {}".format(rewards))
+                self.logger.info("Episode Steps: {}".format(step))
+                self.logger.info("Total Steps: {}".format(self.step_count))
+                self.logger.info("Total Reward: {}".format(total_reward))
+                self.logger.info("")
+
+            if self.step_count >= self.steps:
+                break
 
 
 

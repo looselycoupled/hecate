@@ -72,7 +72,7 @@ class TrainCommand(LoggableMixin, Command):
                     "upate_target_steps": 10000
                 }
                 params["decay_steps"] = int(params["steps"] * .9)
-                params["populate_memory_steps"] = 10000
+                params["populate_memory_steps"] = 1000 if args.simple else 10000
                 agent = Agent(sess, "Breakout-v0", **params)
                 agent.train()
 
