@@ -175,7 +175,7 @@ class Agent(LoggableMixin):
                 record["reward"] = _fix_reward(record["reward"])
                 record["state"] = self.wrangle_image(record["state"])
 
-                # print(pd.DataFrame(record["state"]))
+                print(pd.DataFrame(record["state"]))
                 self.replay_buffer.append(record)
 
                 if record["game_over"]:

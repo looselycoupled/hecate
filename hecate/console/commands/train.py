@@ -23,7 +23,7 @@ from commis import Command
 from hecate.utils.mixins import LoggableMixin
 from hecate.agent import Agent
 from hecate.utils.timer import Timer
-
+from hecate import VALID_GAMES
 
 ##########################################################################
 # Command
@@ -51,7 +51,7 @@ class TrainCommand(LoggableMixin, Command):
         '--game': {
             'default': 'Breakout-v0',
             'type': str,
-            'choices': ['Breakout-v0', ],
+            'choices': VALID_GAMES,
             'help': 'game to play ("Breakout-v0", etc.)',
         }
     }
@@ -73,7 +73,7 @@ class TrainCommand(LoggableMixin, Command):
                 }
                 params["decay_steps"] = int(params["steps"] * .9)
                 params["populate_memory_steps"] = 1000 if args.simple else 10000
-                agent = Agent(sess, "Breakout-v0", **params)
+                agent = Agent(sess, args.game, **params)
                 agent.train()
 
         self.logger.info("job finished in {}".format(t))

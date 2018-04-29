@@ -1,5 +1,6 @@
 from commis import Command
 from hecate.utils.mixins import LoggableMixin
+from hecate import VALID_GAMES
 
 class PlayCommand(LoggableMixin, Command):
 
@@ -11,7 +12,7 @@ class PlayCommand(LoggableMixin, Command):
         '--game': {
             'default': 'Breakout-v0',
             'type': str,
-            'choices': ['Breakout-v0', ],
+            'choices': VALID_GAMES,
             'help': 'game to play ("Breakout-v0", etc.)',
         },
         '--episodes': {
