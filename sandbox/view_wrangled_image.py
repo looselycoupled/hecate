@@ -13,7 +13,7 @@ import tensorflow as tf
 import numpy as np
 import tqdm
 import pandas as pd
-
+import matplotlib.pyplot as plt
 
 #########################################################################
 # Helpers
@@ -52,6 +52,9 @@ transform = tf.image.rgb_to_grayscale(transform)
 transform = tf.image.resize_images(transform, OUTPUT_SHAPE, method=RESIZE_METHOD)
 image_wrangler = tf.squeeze(transform)
 
+def render(img):
+    plt.imshow(img)
+    plt.show()
 
 def wrangle_image(session, image):
     return session.run(image_wrangler, {image_placeholder: image})
@@ -67,6 +70,9 @@ def main(session, env, populate_memory_steps=100, action_size=4, ):
         record = dict(zip(STEP_RESULT_FIELDS, results))
         record["state"] = wrangle_image(session, record["state"])
 
+        # render to window
+        # render(record["state"])
+
         print(pd.DataFrame(record["state"]))
 
         if record["game_over"]:
@@ -80,9 +86,9 @@ def main(session, env, populate_memory_steps=100, action_size=4, ):
 ##########################################################################
 
 if __name__ == '__main__':
-    GAME = "Seaquest-v0"
+    # GAME = "Seaquest-v0"
     with tf.Session() as sess:
-        env = _get_environment(GAME)
+        env = _get_environment()
         action_size = env.action_space.n
 
         main(sess, env, action_size=4)

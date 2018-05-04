@@ -20,6 +20,28 @@ from hecate.utils.timer import Timer
 from hecate.replay_buffer import ReplayBuffer
 
 
+# TODO:
+# Following previous approaches to playing Atari games, we also use a simple
+# frame-skipping technique [3]. More precisely, the agent sees and selects
+# actions on every kth frame instead of every frame, and its last action is
+# repeated on skipped frames. Since running the emulator forward for one step
+# requires much less computation than having the agent select an action, this
+# technique allows the agent to play roughly k times more games without
+# significantly increasing the runtime. We use k = 4 for all games except
+# Space Invaders where we noticed that using k = 4 makes the lasers invisible
+# because of the period at which they blink. We used k = 3 to make the lasers
+# visible and this change was the only difference in hyperparameter values between
+# any of the games.
+
+
+# TODO:
+# In these experiments, we used the RMSProp algorithm with minibatches of size 32.
+# The behavior policy during training was ε-greedy with ε annealed linearly from
+# 1 to 0.1 over the first million frames, and fixed at 0.1 thereafter. We trained
+# for a total of 10 million frames and used a replay memory of one million most
+# recent frames.
+
+
 
 #########################################################################
 # Helpers
@@ -33,6 +55,17 @@ pd.set_option('display.width', 0)
 RESIZE_METHOD = tf.image.ResizeMethod.NEAREST_NEIGHBOR
 INPUT_SHAPE = [210, 160, 3]
 OUTPUT_SHAPE = [84, 84]
+
+PAPER_PARAMETERS = {
+    "EPSILON_DECAY_STEPS": 1e6,
+    "EPSILON_START_VALUE": 1,
+    "EPSILON_END_VALUE": .1,
+
+    "TOTAL_TRAINING_STEPS": 1e7,
+
+    "REPLAY_BUFFER_SIZE": 1e6,
+    "REPLAY_BUFFER_INIT_SIZE": 5e5, # TODO: double check starting size in paper
+}
 
 STEP_RESULT_FIELDS = ["state", "reward", "game_over", "extras", "previous_state"]
 
@@ -76,15 +109,88 @@ class StorageConfig(object):
 
 
 
-class Model(LoggableMixin):
+class DeepQNetwork(LoggableMixin):
 
-    def __init__(self):
+    def __init__(self, session, action_size):
+        self.session = session
+        self.action_size = action_size
+        self.input = tf.placeholder(shape=[None, 84, 84, 1], dtype=tf.uint8, name="input")
+        self.labels = tf.placeholder(shape=[None], dtype=tf.uint8, name="labels")
+        self.actions = tf.placeholder(shape=[None], dtype=tf.uint8, name="actions")
+
+    def _network(self):
+        # https://www.tensorflow.org/api_docs/python/tf/layers/conv2d
+        # https://www.tensorflow.org/api_docs/python/tf/layers/dense
+
+        # The first hidden layer convolves 16 8 × 8 filters with stride 4 with
+        # the input image and applies a rectifier nonlinearity [10, 18].
+        conv_layer_1 = tf.layers.conv2d(
+            self.input,
+            filters=16,
+            kernel_size=(8, 8),
+            strides=4,
+            data_format="channels_last",
+            activation=tf.nn.relu,
+            name="conv_layer_1",
+        )
+        # The second hidden layer convolves 32 4 × 4 filters with stride 2, again
+        # followed by a rectifier nonlinearity.
+        conv_layer_2 = tf.layers.conv2d(
+            conv_layer_1,
+            filters=32,
+            kernel_size=(4, 4),
+            strides=2,
+            data_format="channels_last",
+            activation=tf.nn.relu,
+            name="conv_layer_2",
+        )
+        # The final hidden layer is fully-connected and consists of 256
+        # rectifier units.
+        dense_layer_1 = tf.layers.dense(
+            conv_layer_2,
+            256,
+            activation=tf.nn.relu,
+            name="dense_layer_1",
+        )
+
+        # The output layer is a fully-connected linear layer with a single output
+        # for each valid action.
+        return tf.layers.dense(dense_layer_1, self.action_size, name="output_layer")
+
+    def _optimizer(self):
+        # From paper:
+        #   In these experiments, we used the RMSProp algorithm with minibatches of size 32.
+        # https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
+        return tf.train.RMSPropOptimizer(
+            0.00025, # learning_rate,
+            decay=0.99,
+            momentum=0.0,
+            epsilon=1e-6,
+            name='RMSProp'
+        )
+
+    def _setup(self):
+        self.output_layer = self._network()
+
+        # https://www.tensorflow.org/api_docs/python/tf/losses/mean_squared_error
+        loss = tf.losses.mean_squared_error(self.labels, self.output_layer)
+
+        self.optimize = self._optimizer().minimize(loss)
+
+    def optimize(self, input, labels, actions):
+         train_result, loss = self.sess.run(
+            [self.optimize, self.loss],
+            { self.input: input, self.labels: labels, self.actions: actions })
+
+        # return loss
+
+
+    def predict(self, input):
+        return sess.run(self.output_layer, { self.input: input })
+
+
+    def copy(self, source):
         pass
-
-    def predict(self):
-        pass
-
-
 
 
 class Agent(LoggableMixin):
@@ -95,7 +201,7 @@ class Agent(LoggableMixin):
         episodes=None,
         steps=50000,
         decay_steps=10000,
-        populate_memory_steps=10000,
+        populate_memory_steps=1000,
         upate_target_steps=10000,
         storage_path="data",
         verbose=True,
@@ -151,6 +257,14 @@ class Agent(LoggableMixin):
         transform = tf.image.resize_images(transform, OUTPUT_SHAPE, method=RESIZE_METHOD)
         self.image_wrangler = tf.squeeze(transform)
 
+    @property
+    def epsilon(self):
+        if not hasattr(self, "_epsilon_schedule"):
+            self._epsilon_schedule = np.linspace(1, .1, self.decay_steps)
+        if self.step_count > self.decay_steps:
+            return 1
+        return self._epsilon_schedule[self.step_count - 1]
+
     def wrangle_image(self, image):
         return self.session.run(self.image_wrangler, {self.image_placeholder: image})
 
@@ -166,7 +280,6 @@ class Agent(LoggableMixin):
 
         with Timer() as t:
             previous_state = self.env.reset()
-
             for step in tqdm.tqdm(range(self.populate_memory_steps)):
                 action = random.randrange(self.action_size)
                 results = self.env.step(action) + (previous_state,)
@@ -174,8 +287,6 @@ class Agent(LoggableMixin):
                 record = dict(zip(STEP_RESULT_FIELDS, results))
                 record["reward"] = _fix_reward(record["reward"])
                 record["state"] = self.wrangle_image(record["state"])
-
-                print(pd.DataFrame(record["state"]))
                 self.replay_buffer.append(record)
 
                 if record["game_over"]:
@@ -186,10 +297,8 @@ class Agent(LoggableMixin):
         self.logger.info("_populate_replay_memory: populated ({}) in {}".format(len(self.replay_buffer), t))
 
 
-
     def _choose_action(self, episode_num):
-        epsilon = .5
-        if random.random() > epsilon:
+        if random.random() > self.epsilon:
             return random.randrange(self.action_size)
 
         # for now just return random instead of policy choice
@@ -200,6 +309,9 @@ class Agent(LoggableMixin):
         self._log_configuration()
         self._populate_replay_memory()
         total_reward = 0
+
+        other_network = DeepQNetwork(self.session, self.action_size)
+        target_network = DeepQNetwork(self.session, self.action_size)
 
         # start games
         for episode_num in range(self.episodes):
@@ -228,14 +340,14 @@ class Agent(LoggableMixin):
                     # TODO: train model on random mini batch
 
 
-                    # TODO: update target network if needed
+                    # TODO: periodically update target network to keep training stable
                     if not self.step_count % 5000:
-                        pass
+                        target_network.copy(other_network)
 
                     if record["game_over"] or self.step_count >= self.steps:
                         break
 
-            time.sleep(.005)
+            # time.sleep(.005)
             total_reward += rewards
             self.logger.info("Episode {} completed in {}".format(episode_num, episode_timer))
             if self.verbose:
