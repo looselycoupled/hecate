@@ -23,6 +23,26 @@ from confire import Configuration
 from confire import environ_setting
 import os
 
+
+##########################################################################
+## Storage Configuration
+##########################################################################
+
+class StorageConfig(object):
+    def __init__(self, base, game):
+        self.base = os.path.join(base, game)
+        self.checkpoint = os.path.join(self.base, "checkpoints")
+        self.summary = os.path.join(self.base, "summary")
+        self.monitoring = os.path.join(self.base, "monitoring")
+
+        self._create_directories()
+
+    def _create_directories(self):
+        for path in [self.checkpoint, self.summary, self.monitoring]:
+            if not os.path.exists(path):
+                os.makedirs(path, exist_ok=True)
+
+
 ##########################################################################
 ## Logging Configuration
 ##########################################################################

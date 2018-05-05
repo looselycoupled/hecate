@@ -14,10 +14,11 @@ import numpy as np
 import tqdm
 import pandas as pd
 
-# from hecate.image import wrangle_image
 from hecate.utils.mixins import LoggableMixin
 from hecate.utils.timer import Timer
 from hecate.replay_buffer import ReplayBuffer
+from hecate.dqn import DeepQNetwork
+from hecate.config import StorageConfig
 
 
 # TODO:
@@ -92,139 +93,6 @@ def _fix_reward(reward):
 ##########################################################################
 # Classes
 ##########################################################################
-
-class StorageConfig(object):
-    def __init__(self, base, game):
-        self.base = os.path.join(base, game)
-        self.checkpoint = os.path.join(self.base, "checkpoints")
-        self.summary = os.path.join(self.base, "summary")
-        self.monitoring = os.path.join(self.base, "monitoring")
-
-        self._create_directories()
-
-    def _create_directories(self):
-        for path in [self.checkpoint, self.summary, self.monitoring]:
-            if not os.path.exists(path):
-                os.makedirs(path, exist_ok=True)
-
-
-
-class DeepQNetwork(LoggableMixin):
-
-    def __init__(self, session, name, action_size):
-        self.session = session
-        self.name = name
-        self.action_size = action_size
-        self._setup()
-
-    def _setup(self):
-        with tf.variable_scope(self.name):
-            # https://www.tensorflow.org/api_docs/python/tf/layers/conv2d
-            # https://www.tensorflow.org/api_docs/python/tf/layers/dense
-
-            # placeholders
-            self.input = tf.placeholder(shape=[None, 84, 84, 4], dtype=tf.float32, name="input")
-            self.labels = tf.placeholder(shape=[None], dtype=tf.uint8, name="labels")
-            self.actions = tf.placeholder(shape=[None], dtype=tf.uint8, name="actions")
-
-            # The first hidden layer convolves 16 8 × 8 filters with stride 4 with
-            # the input image and applies a rectifier nonlinearity [10, 18].
-            conv_layer_1 = tf.layers.conv2d(
-                self.input,
-                filters=16,
-                kernel_size=(8, 8),
-                strides=4,
-                data_format="channels_last",
-                activation=tf.nn.relu,
-                name="conv_layer_1",
-            )
-            # The second hidden layer convolves 32 4 × 4 filters with stride 2, again
-            # followed by a rectifier nonlinearity.
-            conv_layer_2 = tf.layers.conv2d(
-                conv_layer_1,
-                filters=32,
-                kernel_size=(4, 4),
-                strides=2,
-                data_format="channels_last",
-                activation=tf.nn.relu,
-                name="conv_layer_2",
-            )
-
-            # flatten before going into fully connected layers
-            # https://www.tensorflow.org/api_docs/python/tf/layers/flatten
-            flatten_layer = tf.layers.flatten(conv_layer_2, "flatten_layer")
-
-            # The final hidden layer is fully-connected and consists of 256
-            # rectifier units.
-            dense_layer_1 = tf.layers.dense(
-                flatten_layer,
-                256,
-                activation=tf.nn.relu,
-                name="dense_layer_1",
-            )
-
-            # The output layer is a fully-connected linear layer with a single output
-            # for each valid action.
-            output_layer = tf.layers.dense(
-                dense_layer_1,
-                self.action_size,
-                name="output_layer"
-            )
-
-
-            # training operations
-
-            # From paper:
-            #   In these experiments, we used the RMSProp algorithm with minibatches of size 32.
-            # https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
-            self._optimizer = tf.train.RMSPropOptimizer(
-                0.00025, # learning_rate,
-                decay=0.99,
-                momentum=0.0,
-                epsilon=1e-6,
-                name='RMSProp'
-            )
-
-            # fix actions from output_layer
-            actions = tf.reduce_sum(
-                output_layer * tf.one_hot(self.actions, self.action_size),
-                axis=[1]
-            )
-
-            # define loss function using labels and actions
-            # https://www.tensorflow.org/api_docs/python/tf/losses/mean_squared_error
-            self.loss = tf.losses.mean_squared_error(self.labels, actions)
-
-            # training/optimization function using above loss
-            self.optimize = self._optimizer.minimize(self.loss)
-
-    def train(self, input, labels, actions):
-        # pass
-         train_result, loss = self.session.run(
-            [self.optimize, self.loss],
-            { self.input: input, self.labels: labels, self.actions: actions })
-
-        # return loss
-
-
-    def predict(self, input):
-        return session.run(self.output_layer, { self.input: input })
-
-
-    def copy(self, source):
-        print("COPYING TO TARGET NETWORK")
-        external_vars = sorted(
-            [v for v in tf.trainable_variables() if v.name.startswith(source.name)],
-            key=lambda item: item.name
-        )
-        internal_vars = sorted(
-            [v for v in tf.trainable_variables() if v.name.startswith(self.name)],
-            key=lambda item: item.name
-        )
-        self.session.run([
-            internal.assign(self.session.run(external))
-            for internal, external in zip(internal_vars, external_vars)
-        ])
 
 class Agent(LoggableMixin):
 
@@ -391,7 +259,7 @@ class Agent(LoggableMixin):
 
                     # periodically update target network to keep training stable
                     # TODO: decide on final value... 5000 for testing
-                    if self.step_count % 500 == 0:
+                    if self.step_count % 5000 == 0:
                         target_network.copy(other_network)
 
                     if record["game_over"] or self.step_count >= self.steps:
