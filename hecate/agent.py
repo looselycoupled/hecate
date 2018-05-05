@@ -67,7 +67,7 @@ PAPER_PARAMETERS = {
     "REPLAY_BUFFER_INIT_SIZE": 5e5, # TODO: double check starting size in paper
 }
 
-STEP_RESULT_FIELDS = ["state", "reward", "game_over", "extras", "previous_state"]
+STEP_RESULT_FIELDS = ["state", "reward", "game_over", "extras", "previous_state", "action"]
 
 ##########################################################################
 # Helpers
@@ -114,9 +114,10 @@ class DeepQNetwork(LoggableMixin):
     def __init__(self, session, action_size):
         self.session = session
         self.action_size = action_size
-        self.input = tf.placeholder(shape=[None, 84, 84, 1], dtype=tf.uint8, name="input")
+        self.input = tf.placeholder(shape=[None, 84, 84, 4], dtype=tf.float32, name="input")
         self.labels = tf.placeholder(shape=[None], dtype=tf.uint8, name="labels")
         self.actions = tf.placeholder(shape=[None], dtype=tf.uint8, name="actions")
+        self._setup()
 
     def _network(self):
         # https://www.tensorflow.org/api_docs/python/tf/layers/conv2d
@@ -131,6 +132,8 @@ class DeepQNetwork(LoggableMixin):
             strides=4,
             data_format="channels_last",
             activation=tf.nn.relu,
+            # use_bias=True,
+            # bias_initializer=tf.zeros_initializer(),
             name="conv_layer_1",
         )
         # The second hidden layer convolves 32 4 × 4 filters with stride 2, again
@@ -142,12 +145,19 @@ class DeepQNetwork(LoggableMixin):
             strides=2,
             data_format="channels_last",
             activation=tf.nn.relu,
+            # use_bias=True,
+            # bias_initializer=tf.zeros_initializer(),
             name="conv_layer_2",
         )
+
+        # flatten before going into fully connected layers
+        # https://www.tensorflow.org/api_docs/python/tf/layers/flatten
+        flatten_layer = tf.layers.flatten(conv_layer_2, "flatten_layer")
+
         # The final hidden layer is fully-connected and consists of 256
         # rectifier units.
         dense_layer_1 = tf.layers.dense(
-            conv_layer_2,
+            flatten_layer,
             256,
             activation=tf.nn.relu,
             name="dense_layer_1",
@@ -155,7 +165,16 @@ class DeepQNetwork(LoggableMixin):
 
         # The output layer is a fully-connected linear layer with a single output
         # for each valid action.
-        return tf.layers.dense(dense_layer_1, self.action_size, name="output_layer")
+        output_layer = tf.layers.dense(
+            dense_layer_1,
+            self.action_size,
+            # use_bias=True,
+            # bias_initializer=tf.zeros_initializer(),
+            name="output_layer"
+        )
+
+        return output_layer
+
 
     def _optimizer(self):
         # From paper:
@@ -172,13 +191,20 @@ class DeepQNetwork(LoggableMixin):
     def _setup(self):
         self.output_layer = self._network()
 
+        actions = tf.reduce_sum(
+            self.output_layer * tf.one_hot(self.actions, self.action_size),
+            axis=[1]
+        )
+
         # https://www.tensorflow.org/api_docs/python/tf/losses/mean_squared_error
-        loss = tf.losses.mean_squared_error(self.labels, self.output_layer)
+        # TODO: fix labels and output_layer to have same shape/dtype
+        self.loss = tf.losses.mean_squared_error(self.labels, actions)
 
-        self.optimize = self._optimizer().minimize(loss)
+        self.optimize = self._optimizer().minimize(self.loss)
 
-    def optimize(self, input, labels, actions):
-         train_result, loss = self.sess.run(
+    def train(self, input, labels, actions):
+        # pass
+         train_result, loss = self.session.run(
             [self.optimize, self.loss],
             { self.input: input, self.labels: labels, self.actions: actions })
 
@@ -186,7 +212,7 @@ class DeepQNetwork(LoggableMixin):
 
 
     def predict(self, input):
-        return sess.run(self.output_layer, { self.input: input })
+        return session.run(self.output_layer, { self.input: input })
 
 
     def copy(self, source):
@@ -282,11 +308,12 @@ class Agent(LoggableMixin):
             previous_state = self.env.reset()
             for step in tqdm.tqdm(range(self.populate_memory_steps)):
                 action = random.randrange(self.action_size)
-                results = self.env.step(action) + (previous_state,)
+                results = self.env.step(action) + (previous_state, action)
 
                 record = dict(zip(STEP_RESULT_FIELDS, results))
                 record["reward"] = _fix_reward(record["reward"])
                 record["state"] = self.wrangle_image(record["state"])
+                record["state"] =np.stack([record["state"]] * 4, axis=2)
                 self.replay_buffer.append(record)
 
                 if record["game_over"]:
@@ -310,9 +337,15 @@ class Agent(LoggableMixin):
         self._populate_replay_memory()
         total_reward = 0
 
+        print("CREATING MODELS")
         other_network = DeepQNetwork(self.session, self.action_size)
-        target_network = DeepQNetwork(self.session, self.action_size)
+        target_network = None #DeepQNetwork(self.session, self.action_size)
 
+        print("tf.global_variables_initializer()")
+        # tf.initialize_all_variables()
+        self.session.run(tf.global_variables_initializer())
+
+        print("STARTING TRAINING EPISODES")
         # start games
         for episode_num in range(self.episodes):
             with Timer() as episode_timer:
@@ -328,17 +361,29 @@ class Agent(LoggableMixin):
                     action = self._choose_action(episode_num)
 
                     # TODO: abstract this out (repetative code)
-                    results = self.env.step(action) + (previous_state,)
+                    results = self.env.step(action) + (previous_state, action)
                     record = dict(zip(STEP_RESULT_FIELDS, results))
                     record["reward"] = _fix_reward(record["reward"])
                     record["state"] = self.wrangle_image(record["state"])
+                    record["state"] =np.stack([record["state"]] * 4, axis=2)
 
                     self.replay_buffer.append(record)
                     previous_state = record["state"]
                     rewards += record["reward"]
 
                     # TODO: train model on random mini batch
+                    batch_dicts = self.replay_buffer.sample()
+                    batch = [
+                            (item["state"], item["reward"], item["game_over"], item["extras"], item["previous_state"], item["action"])
+                            for item in batch_dicts
+                        ]
+                    states, rewards, game_overs, _, next_states, actions = list(map(np.array, zip(*batch)))
+                    # import pdb; pdb.set_trace()
 
+                    # TODO: fake labels for now
+                    labels = np.array([0 for i in range(32)])
+
+                    other_network.train(states, labels, actions)
 
                     # TODO: periodically update target network to keep training stable
                     if not self.step_count % 5000:
@@ -348,7 +393,7 @@ class Agent(LoggableMixin):
                         break
 
             # time.sleep(.005)
-            total_reward += rewards
+            total_reward += rewards.sum()
             self.logger.info("Episode {} completed in {}".format(episode_num, episode_timer))
             if self.verbose:
                 self.logger.info("Episode Reward: {}".format(rewards))
