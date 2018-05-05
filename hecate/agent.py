@@ -132,8 +132,6 @@ class DeepQNetwork(LoggableMixin):
             strides=4,
             data_format="channels_last",
             activation=tf.nn.relu,
-            # use_bias=True,
-            # bias_initializer=tf.zeros_initializer(),
             name="conv_layer_1",
         )
         # The second hidden layer convolves 32 4 × 4 filters with stride 2, again
@@ -145,8 +143,6 @@ class DeepQNetwork(LoggableMixin):
             strides=2,
             data_format="channels_last",
             activation=tf.nn.relu,
-            # use_bias=True,
-            # bias_initializer=tf.zeros_initializer(),
             name="conv_layer_2",
         )
 
@@ -168,8 +164,6 @@ class DeepQNetwork(LoggableMixin):
         output_layer = tf.layers.dense(
             dense_layer_1,
             self.action_size,
-            # use_bias=True,
-            # bias_initializer=tf.zeros_initializer(),
             name="output_layer"
         )
 
@@ -191,15 +185,17 @@ class DeepQNetwork(LoggableMixin):
     def _setup(self):
         self.output_layer = self._network()
 
+        # fix actions from output_layer
         actions = tf.reduce_sum(
             self.output_layer * tf.one_hot(self.actions, self.action_size),
             axis=[1]
         )
 
+        # define loss function using labels and actions
         # https://www.tensorflow.org/api_docs/python/tf/losses/mean_squared_error
-        # TODO: fix labels and output_layer to have same shape/dtype
         self.loss = tf.losses.mean_squared_error(self.labels, actions)
 
+        # training/optimization function using above loss
         self.optimize = self._optimizer().minimize(self.loss)
 
     def train(self, input, labels, actions):
@@ -325,10 +321,10 @@ class Agent(LoggableMixin):
 
 
     def _choose_action(self, episode_num):
-        if random.random() > self.epsilon:
+        if random.random() < self.epsilon:
             return random.randrange(self.action_size)
 
-        # for now just return random instead of policy choice
+        # TODO: for now just return random instead of policy choice
         return random.randrange(self.action_size)
 
     def train(self):
@@ -339,10 +335,11 @@ class Agent(LoggableMixin):
 
         print("CREATING MODELS")
         other_network = DeepQNetwork(self.session, self.action_size)
+
+        # FIX: networks can't use same names or raises exception:  Variable
+        # conv_layer_1/kernel already exists, disallowed.
         target_network = None #DeepQNetwork(self.session, self.action_size)
 
-        print("tf.global_variables_initializer()")
-        # tf.initialize_all_variables()
         self.session.run(tf.global_variables_initializer())
 
         print("STARTING TRAINING EPISODES")
@@ -377,13 +374,12 @@ class Agent(LoggableMixin):
                             (item["state"], item["reward"], item["game_over"], item["extras"], item["previous_state"], item["action"])
                             for item in batch_dicts
                         ]
-                    states, rewards, game_overs, _, next_states, actions = list(map(np.array, zip(*batch)))
-                    # import pdb; pdb.set_trace()
+                    batch_states, batch_rewards, batch_game_overs, _, batch_next_states, batch_actions = list(map(np.array, zip(*batch)))
 
                     # TODO: fake labels for now
-                    labels = np.array([0 for i in range(32)])
+                    batch_labels = np.array([0 for i in range(32)])
 
-                    other_network.train(states, labels, actions)
+                    other_network.train(batch_states, batch_labels, batch_actions)
 
                     # TODO: periodically update target network to keep training stable
                     if not self.step_count % 5000:
@@ -393,7 +389,7 @@ class Agent(LoggableMixin):
                         break
 
             # time.sleep(.005)
-            total_reward += rewards.sum()
+            total_reward += rewards
             self.logger.info("Episode {} completed in {}".format(episode_num, episode_timer))
             if self.verbose:
                 self.logger.info("Episode Reward: {}".format(rewards))
