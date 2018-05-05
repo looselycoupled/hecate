@@ -117,8 +117,6 @@ class Agent(LoggableMixin):
         self.upate_target_steps = upate_target_steps
         self.dirs = StorageConfig(storage_path, game)
 
-        self.model = tf.Variable(0, name='foo', trainable=False)
-        self.saver = tf.train.Saver()
         self.replay_buffer = ReplayBuffer(2 * populate_memory_steps)
         self.step_count = 0
         self.env = None
@@ -128,7 +126,12 @@ class Agent(LoggableMixin):
         self.verbose = verbose
 
         self._init_image_wrangler()
-        self._load_checkpoint()
+
+    @property
+    def saver(self):
+        if not hasattr(self, "_saver"):
+            self._saver = tf.train.Saver()
+        return self._saver
 
     def _log_configuration(self):
         self.logger.info("AGENT CONFIG")
@@ -142,9 +145,14 @@ class Agent(LoggableMixin):
 
 
     def _load_checkpoint(self):
+        # TODO: Move this to DeepQNetwork class?
         checkpoint = tf.train.latest_checkpoint(self.dirs.checkpoint)
         if checkpoint:
             self.saver.restore(self.session, checkpoint)
+
+    def _save_checkpoint(self):
+        # TODO: Move this to DeepQNetwork class?
+        self.saver.save(tf.get_default_session(), self.dirs.checkpoint)
 
     def _init_env(self):
         self.env = _get_environment(self.game)
@@ -216,13 +224,18 @@ class Agent(LoggableMixin):
         other_network = DeepQNetwork(self.session, "other_network", self.action_size)
         target_network = DeepQNetwork(self.session, "target_network", self.action_size)
 
+        self._load_checkpoint()
         self.session.run(tf.global_variables_initializer())
 
         print("STARTING TRAINING EPISODES")
         # start games
         for episode_num in range(self.episodes):
-            with Timer() as episode_timer:
 
+            # checkpoint all tf vars every couple of episodes
+            if episode_num % 2 == 0:
+                self._save_checkpoint()
+
+            with Timer() as episode_timer:
                 previous_state = self.env.reset()
                 step = 0
                 rewards = 0
