@@ -257,9 +257,6 @@ class Agent(LoggableMixin):
                     record = dict(zip(STEP_RESULT_FIELDS, results))
                     record["reward"] = _fix_reward(record["reward"])
                     record["state"] = self.wrangle_image(record["state"])
-                    if record["state"].shape != (84,84):
-                        import pdb; pdb.set_trace()
-
                     record["state"] =np.stack([record["state"]] * 4, axis=2)
 
                     self.replay_buffer.append(record)
@@ -273,9 +270,6 @@ class Agent(LoggableMixin):
                             for item in batch_dicts
                         ]
                     batch_states, batch_rewards, batch_game_overs, _, batch_next_states, batch_actions = list(map(np.array, zip(*batch)))
-
-                    if batch_next_states.shape != (32, 84, 84, 4):
-                        import pdb; pdb.set_trace()
 
                     # calculate action values of next states
                     batch_next_action_values = np.amax(

@@ -117,7 +117,6 @@ class DeepQNetwork(LoggableMixin):
             self.optimize = self._optimizer.minimize(self.loss)
 
     def train(self, input, labels, actions):
-        # pass
          train_result, loss = self.session.run(
             [self.optimize, self.loss],
             { self.input: input, self.labels: labels, self.actions: actions })
@@ -126,7 +125,6 @@ class DeepQNetwork(LoggableMixin):
 
 
     def predict(self, input):
-        # import pdb; pdb.set_trace()
         return self.session.run(self.output_layer, { self.input: input })
 
 

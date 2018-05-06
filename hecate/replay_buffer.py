@@ -17,12 +17,5 @@ class ReplayBuffer(object):
     def sample(self, amount=32):
         return random.sample(self.buffer, amount)
 
-    def verify_dimensions(self):
-        for item in self.buffer:
-            if item["state"].shape != (84,84,4):
-                import pdb; pdb.set_trace()
-            if item["previous_state"].shape != (84,84,4):
-                import pdb; pdb.set_trace()
-
     def __len__(self):
         return len(self.buffer)
