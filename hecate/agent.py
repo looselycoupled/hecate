@@ -130,6 +130,7 @@ class Agent(LoggableMixin):
         self.update_target_steps = update_target_steps
         self.dirs = StorageConfig(storage_path, game)
 
+        self.hold_out_buffer = ReplayBuffer(2000)
         self.replay_buffer = ReplayBuffer(2 * populate_memory_steps)
         self.step_count = 0
         self.env = None
@@ -207,7 +208,7 @@ class Agent(LoggableMixin):
         )
         return  np.stack([processed_image] * 1, axis=2)
 
-    def _populate_replay_memory(self):
+    def _populate_replay_memory(self, buffer, steps):
         """
 
         From: Playing atari with deep reinforcement learning (page 5)
@@ -221,7 +222,7 @@ class Agent(LoggableMixin):
             previous_state = self.wrangle_image(self.env.reset())
             # previous_state = np.stack([previous_state] * 4, axis=2)
 
-            for step in tqdm.tqdm(range(self.populate_memory_steps)):
+            for step in tqdm.tqdm(range(steps)):
                 action = random.randrange(self.action_size)
                 results = self.env.step(action) + (previous_state, action)
 
@@ -229,7 +230,7 @@ class Agent(LoggableMixin):
                 record["reward"] = _fix_reward(record["reward"])
                 record["state"] = self.wrangle_image(record["state"])
                 # record["state"] =np.stack([record["state"]] * 4, axis=2)
-                self.replay_buffer.append(record)
+                buffer.append(record)
 
                 if record["game_over"]:
                     previous_state = self.wrangle_image(self.env.reset())
@@ -237,7 +238,7 @@ class Agent(LoggableMixin):
                 else:
                     previous_state = record["state"]
 
-        self.logger.info("_populate_replay_memory: populated ({}) in {}".format(len(self.replay_buffer), t))
+        self.logger.info("_populate_replay_memory: populated ({}) in {}".format(len(buffer), t))
 
 
     def _choose_action(self, state, network):
@@ -252,9 +253,15 @@ class Agent(LoggableMixin):
             self.dirs.summary
         )
 
-    def write_episodic_summaries(self, episode_rewards, episode_steps, random_actions):
+    def write_episodic_summaries(self, episode_rewards, episode_steps, random_actions, original_rewards, fixed_rewards):
+
+        same_reward = int(original_rewards == fixed_rewards)
+
         summary = tf.Summary()
         summary.value.add(simple_value=episode_rewards, tag="episode/reward")
+        summary.value.add(simple_value=sum(original_rewards), tag="episode/original reward total")
+        summary.value.add(simple_value=sum(fixed_rewards), tag="episode/fixed reward total")
+        summary.value.add(simple_value=same_reward, tag="episode/same_reward")
         summary.value.add(simple_value=episode_steps, tag="episode/steps")
         summary.value.add(simple_value=self.epsilon, tag="episode/epsilon")
         summary.value.add(simple_value=random_actions, tag="episode/random choices")
@@ -262,11 +269,25 @@ class Agent(LoggableMixin):
         self.summary_writer.add_summary(summary, self.episode_num)
         self.summary_writer.flush()
 
+    def test_hold_out_buffer(self, network):
+        if not hasattr(self, "_hold_out_states"):
+            batch_replays = self.hold_out_buffer.buffer
+            self._hold_out_states = np.array([replay["state"] for replay in batch_replays])
+
+        batch_predicted_action_values = network.predict(self._hold_out_states)
+        avg_max_action_value = np.array(batch_predicted_action_values).max(axis=1).mean()
+
+        summary = tf.Summary()
+        summary.value.add(simple_value=avg_max_action_value, tag="holdout/episode/avg max Q")
+        self.summary_writer.add_summary(summary, self.episode_num)
+        self.summary_writer.flush()
+
 
     def train(self):
         self._init_env()
         self._log_configuration()
-        self._populate_replay_memory()
+        self._populate_replay_memory(self.replay_buffer, self.populate_memory_steps)
+        self._populate_replay_memory(self.hold_out_buffer, 2000)
         self._add_monitor()
         self._init_summary_writer()
         total_reward = 0
@@ -293,6 +314,9 @@ class Agent(LoggableMixin):
                 rewards = 0
                 chosen_actions = []
 
+                original_rewards = []
+                fixed_rewards = []
+
                 while True:
                     self.step_count += 1
                     step +=1
@@ -310,11 +334,16 @@ class Agent(LoggableMixin):
                         results = tuple(results)
                         if results[2] is True:
                             break
+                    # results = list(self.env.step(action) + (previous_state, action))
 
 
                     # TODO: abstract this out (repetative code)
                     record = dict(zip(STEP_RESULT_FIELDS, results))
+                    original_rewards.append(record["reward"])
+
                     record["reward"] = _fix_reward(record["reward"])
+                    fixed_rewards.append(record["reward"])
+
                     record["state"] = self.wrangle_image(record["state"])
                     # record["state"] = np.stack([record["state"]] * 4, axis=2)
 
@@ -331,8 +360,9 @@ class Agent(LoggableMixin):
                     batch_states, batch_rewards, batch_game_overs, _, batch_next_states, batch_actions = list(map(np.array, zip(*batch)))
 
                     # calculate action values of next states
+                    batch_predicted_action_values = target_network.predict(batch_next_states)
                     batch_next_action_values = np.amax(
-                        target_network.predict(batch_next_states), axis=1
+                        batch_predicted_action_values, axis=1
                     )
 
                     # calculate values using Bellman equation for training network
@@ -361,8 +391,10 @@ class Agent(LoggableMixin):
                         break
 
             total_reward += rewards
+            print(fixed_rewards == original_rewards)
 
-            self.write_episodic_summaries(rewards, step, episode_random_actions)
+            self.write_episodic_summaries(rewards, step, episode_random_actions, original_rewards, fixed_rewards)
+            self.test_hold_out_buffer(other_network)
 
             self.logger.info("Episode {} completed in {}".format(self.episode_num, episode_timer))
             if self.verbose:

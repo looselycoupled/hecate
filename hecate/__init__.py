@@ -8,3 +8,13 @@ VALID_GAMES = (
     "Seaquest-v0",      # https://gym.openai.com/envs/Seaquest-v0/
     "SpaceInvaders-v0", # https://gym.openai.com/envs/SpaceInvaders-v0/
 )
+
+
+GAME_ACTIONS = {
+    "Breakout-v0": {
+        0: "noop",
+        1: "fire",
+        2: "left",
+        3: "right",
+    },
+}
