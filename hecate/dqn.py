@@ -116,12 +116,13 @@ class DeepQNetwork(LoggableMixin):
             # training/optimization function using above loss
             self.optimize = self._optimizer.minimize(self.loss)
 
+
     def train(self, input, labels, actions):
-         train_result, loss = self.session.run(
+        train_result, loss = self.session.run(
             [self.optimize, self.loss],
             { self.input: input, self.labels: labels, self.actions: actions })
 
-        # return loss
+        return loss
 
 
     def predict(self, input):

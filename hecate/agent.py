@@ -195,7 +195,7 @@ class Agent(LoggableMixin):
         # 1 to 0.1 over the first million frames, and fixed at 0.1 thereafter.
         if not hasattr(self, "_epsilon_schedule"):
             self._epsilon_schedule = np.linspace(1, .1, self.decay_steps)
-            
+
         if self.step_count > self.decay_steps:
             return .1
         return self._epsilon_schedule[self.step_count - 1]
@@ -240,18 +240,35 @@ class Agent(LoggableMixin):
         self.logger.info("_populate_replay_memory: populated ({}) in {}".format(len(self.replay_buffer), t))
 
 
-    def _choose_action(self, episode_num, state, network):
+    def _choose_action(self, state, network):
         if random.random() < self.epsilon:
-            return random.randrange(self.action_size)
+            return random.randrange(self.action_size), True
 
         action_values = network.predict([state])[0]
-        return np.argmax(action_values)
+        return np.argmax(action_values), False
+
+    def _init_summary_writer(self):
+        self.summary_writer = tf.summary.FileWriter(
+            self.dirs.summary
+        )
+
+    def write_episodic_summaries(self, episode_rewards, episode_steps, random_actions):
+        summary = tf.Summary()
+        summary.value.add(simple_value=episode_rewards, tag="episode/reward")
+        summary.value.add(simple_value=episode_steps, tag="episode/steps")
+        summary.value.add(simple_value=self.epsilon, tag="episode/epsilon")
+        summary.value.add(simple_value=random_actions, tag="episode/random choices")
+        summary.value.add(simple_value=random_actions / episode_steps, tag="episode/random choices %")
+        self.summary_writer.add_summary(summary, self.episode_num)
+        self.summary_writer.flush()
+
 
     def train(self):
         self._init_env()
         self._log_configuration()
         self._populate_replay_memory()
         self._add_monitor()
+        self._init_summary_writer()
         total_reward = 0
 
         print("CREATING MODELS")
@@ -263,10 +280,11 @@ class Agent(LoggableMixin):
 
         print("STARTING TRAINING EPISODES")
         # start games
-        for episode_num in range(self.episodes):
+        for self.episode_num in range(self.episodes):
+            episode_random_actions = 0
 
             # checkpoint all tf vars every couple of episodes
-            if episode_num % 2 == 0:
+            if self.episode_num % 5 == 0:
                 self._save_checkpoint()
 
             with Timer() as episode_timer:
@@ -278,7 +296,9 @@ class Agent(LoggableMixin):
                 while True:
                     self.step_count += 1
                     step +=1
-                    action = self._choose_action(episode_num, previous_state, target_network)
+                    action, is_random = self._choose_action(previous_state, target_network)
+
+                    episode_random_actions += int(is_random)
                     chosen_actions.append(action)
 
                     # frame skipping
@@ -321,7 +341,16 @@ class Agent(LoggableMixin):
                         DISCOUNT_RATE *
                         batch_next_action_values
                     )
-                    other_network.train(batch_states, batch_labels, batch_actions)
+
+                    # record loss over time
+                    loss = other_network.train(batch_states, batch_labels, batch_actions)
+
+                    if self.step_count % 10 == 0:
+                        summary = tf.Summary()
+                        summary.value.add(simple_value=loss, tag="loss")
+                        self.summary_writer.add_summary(summary, self.step_count)
+                        self.summary_writer.flush()
+
 
                     # periodically update target network to keep training stable
                     if self.step_count % self.update_target_steps == 0:
@@ -331,9 +360,11 @@ class Agent(LoggableMixin):
                     if record["game_over"] or self.step_count >= self.steps:
                         break
 
-            # time.sleep(.005)
             total_reward += rewards
-            self.logger.info("Episode {} completed in {}".format(episode_num, episode_timer))
+
+            self.write_episodic_summaries(rewards, step, episode_random_actions)
+
+            self.logger.info("Episode {} completed in {}".format(self.episode_num, episode_timer))
             if self.verbose:
                 self.logger.info("Episode Reward: {}".format(rewards))
                 self.logger.info("Episode Steps: {}".format(step))

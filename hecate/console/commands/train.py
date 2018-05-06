@@ -66,13 +66,13 @@ class TrainCommand(LoggableMixin, Command):
             tf.reset_default_graph()
             with tf.Session() as sess:
                 params = {
-                    "episodes": 100 if args.simple else 10000,
-                    "steps": 10000 if args.simple else 500000,
+                    "episodes": 2000 if args.simple else 10000,
+                    "steps": 40000 if args.simple else 500000,
                     "storage_path": "data",
                     "update_target_steps": 5000
                 }
                 params["decay_steps"] = int(params["steps"] * .9)
-                params["populate_memory_steps"] = 1000 if args.simple else 100000
+                params["populate_memory_steps"] = 20000 if args.simple else 100000
                 agent = Agent(sess, args.game, **params)
                 agent.train()
 
