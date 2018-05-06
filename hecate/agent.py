@@ -190,10 +190,14 @@ class Agent(LoggableMixin):
 
     @property
     def epsilon(self):
+        # From Paper:
+        # The behavior policy during training was ε-greedy with ε annealed linearly from
+        # 1 to 0.1 over the first million frames, and fixed at 0.1 thereafter.
         if not hasattr(self, "_epsilon_schedule"):
             self._epsilon_schedule = np.linspace(1, .1, self.decay_steps)
+            
         if self.step_count > self.decay_steps:
-            return 1
+            return .1
         return self._epsilon_schedule[self.step_count - 1]
 
     def wrangle_image(self, image):
