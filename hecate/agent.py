@@ -117,7 +117,7 @@ class Agent(LoggableMixin):
         populate_memory_steps=1000,
         update_target_steps=5000,
         storage_path="data",
-        verbose=True,
+        verbose=False,
     ):
         super(Agent, self).__init__()
         self.session = session
@@ -253,15 +253,9 @@ class Agent(LoggableMixin):
             self.dirs.summary
         )
 
-    def write_episodic_summaries(self, episode_rewards, episode_steps, random_actions, original_rewards, fixed_rewards):
-
-        same_reward = int(original_rewards == fixed_rewards)
-
+    def write_episodic_summaries(self, episode_rewards, episode_steps, random_actions):
         summary = tf.Summary()
         summary.value.add(simple_value=episode_rewards, tag="episode/reward")
-        summary.value.add(simple_value=sum(original_rewards), tag="episode/original reward total")
-        summary.value.add(simple_value=sum(fixed_rewards), tag="episode/fixed reward total")
-        summary.value.add(simple_value=same_reward, tag="episode/same_reward")
         summary.value.add(simple_value=episode_steps, tag="episode/steps")
         summary.value.add(simple_value=self.epsilon, tag="episode/epsilon")
         summary.value.add(simple_value=random_actions, tag="episode/random choices")
@@ -391,12 +385,13 @@ class Agent(LoggableMixin):
                         break
 
             total_reward += rewards
-            print(fixed_rewards == original_rewards)
+            if not (fixed_rewards == original_rewards):
+                print("NOT THE SAME:\n{}\n{}".format(original_rewards, fixed_rewards))
 
-            self.write_episodic_summaries(rewards, step, episode_random_actions, original_rewards, fixed_rewards)
+            self.write_episodic_summaries(rewards, step, episode_random_actions)
             self.test_hold_out_buffer(other_network)
 
-            self.logger.info("Episode {} completed in {}".format(self.episode_num, episode_timer))
+            self.logger.info("Episode {} completed in {} ({})".format(self.episode_num, episode_timer, rewards))
             if self.verbose:
                 self.logger.info("Episode Reward: {}".format(rewards))
                 self.logger.info("Episode Steps: {}".format(step))

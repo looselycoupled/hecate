@@ -35,6 +35,11 @@ class TrainCommand(LoggableMixin, Command):
     help    = "train Hecate on a given game"
 
     args    = {
+        ('-v', '--verbose'): {
+            'action': 'store_true',
+            'help': 'verbose output',
+        },
+
         ('--simple'): {
             'action': 'store_true',
             'help': 'small defaults for debugging',
@@ -69,7 +74,8 @@ class TrainCommand(LoggableMixin, Command):
                     "episodes": 2000 if args.simple else 10000,
                     "steps": 40000 if args.simple else 500000,
                     "storage_path": "data",
-                    "update_target_steps": 5000
+                    "update_target_steps": 5000,
+                    "verbose": args.verbose,
                 }
                 params["decay_steps"] = int(params["steps"] * .9)
                 params["populate_memory_steps"] = 20000 if args.simple else 100000
