@@ -99,8 +99,8 @@ def _fix_reward(reward):
         rewards unchanged.
     """
     if reward == 0: return reward
-    if reward < 0: return -1
-    if reward > 0: return 1
+    if reward < 0: return -1.0
+    if reward > 0: return 1.0
 
 ##########################################################################
 # Classes
@@ -391,7 +391,7 @@ class Agent(LoggableMixin):
             self.write_episodic_summaries(rewards, step, episode_random_actions)
             self.test_hold_out_buffer(other_network)
 
-            self.logger.info("Episode {} completed in {} ({})".format(self.episode_num, episode_timer, rewards))
+            self.logger.info("Episode {} completed {} steps in {} ({})".format(self.episode_num, step, episode_timer, rewards))
             if self.verbose:
                 self.logger.info("Episode Reward: {}".format(rewards))
                 self.logger.info("Episode Steps: {}".format(step))
