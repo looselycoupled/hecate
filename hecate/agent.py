@@ -68,6 +68,8 @@ PAPER_PARAMETERS = {
     "REPLAY_BUFFER_INIT_SIZE": 5e5, # TODO: double check starting size in paper
 }
 
+DISCOUNT_RATE = .99
+
 STEP_RESULT_FIELDS = ["state", "reward", "game_over", "extras", "previous_state", "action"]
 
 ##########################################################################
@@ -188,7 +190,9 @@ class Agent(LoggableMixin):
         self.logger.info("_populate_replay_memory: populating memory replay buffer")
 
         with Timer() as t:
-            previous_state = self.env.reset()
+            previous_state = self.wrangle_image(self.env.reset())
+            previous_state = np.stack([previous_state] * 4, axis=2)
+
             for step in tqdm.tqdm(range(self.populate_memory_steps)):
                 action = random.randrange(self.action_size)
                 results = self.env.step(action) + (previous_state, action)
@@ -200,7 +204,8 @@ class Agent(LoggableMixin):
                 self.replay_buffer.append(record)
 
                 if record["game_over"]:
-                    previous_state = self.env.reset()
+                    previous_state = self.wrangle_image(self.env.reset())
+                    previous_state = np.stack([previous_state] * 4, axis=2)
                 else:
                     previous_state = record["state"]
 
@@ -236,7 +241,8 @@ class Agent(LoggableMixin):
                 self._save_checkpoint()
 
             with Timer() as episode_timer:
-                previous_state = self.env.reset()
+                previous_state = self.wrangle_image(self.env.reset())
+                previous_state = np.stack([previous_state] * 4, axis=2)
                 step = 0
                 rewards = 0
 
@@ -251,6 +257,9 @@ class Agent(LoggableMixin):
                     record = dict(zip(STEP_RESULT_FIELDS, results))
                     record["reward"] = _fix_reward(record["reward"])
                     record["state"] = self.wrangle_image(record["state"])
+                    if record["state"].shape != (84,84):
+                        import pdb; pdb.set_trace()
+
                     record["state"] =np.stack([record["state"]] * 4, axis=2)
 
                     self.replay_buffer.append(record)
@@ -265,9 +274,20 @@ class Agent(LoggableMixin):
                         ]
                     batch_states, batch_rewards, batch_game_overs, _, batch_next_states, batch_actions = list(map(np.array, zip(*batch)))
 
-                    # TODO: fake labels for now
-                    batch_labels = np.array([0 for i in range(32)])
+                    if batch_next_states.shape != (32, 84, 84, 4):
+                        import pdb; pdb.set_trace()
 
+                    # calculate action values of next states
+                    batch_next_action_values = np.amax(
+                        target_network.predict(batch_next_states), axis=1
+                    )
+
+                    # calculate values using Bellman equation for training network
+                    batch_labels = batch_rewards + (
+                        np.invert(batch_game_overs).astype(np.float32) *
+                        DISCOUNT_RATE *
+                        batch_next_action_values
+                    )
                     other_network.train(batch_states, batch_labels, batch_actions)
 
                     # periodically update target network to keep training stable

@@ -81,8 +81,8 @@ class DeepQNetwork(LoggableMixin):
             )
 
             # The output layer is a fully-connected linear layer with a single output
-            # for each valid action.
-            output_layer = tf.layers.dense(
+            # for each valid action.  Outputs action values!
+            self.output_layer = tf.layers.dense(
                 dense_layer_1,
                 self.action_size,
                 name="output_layer"
@@ -102,15 +102,16 @@ class DeepQNetwork(LoggableMixin):
                 name='RMSProp'
             )
 
-            # fix actions from output_layer
-            actions = tf.reduce_sum(
-                output_layer * tf.one_hot(self.actions, self.action_size),
+            # fix actions from output_layer for training
+            # https://www.tensorflow.org/api_docs/python/tf/reduce_sum
+            fixed_action_values = tf.reduce_sum(
+                self.output_layer * tf.one_hot(self.actions, self.action_size),
                 axis=[1]
             )
 
             # define loss function using labels and actions
             # https://www.tensorflow.org/api_docs/python/tf/losses/mean_squared_error
-            self.loss = tf.losses.mean_squared_error(self.labels, actions)
+            self.loss = tf.losses.mean_squared_error(self.labels, fixed_action_values)
 
             # training/optimization function using above loss
             self.optimize = self._optimizer.minimize(self.loss)
@@ -125,7 +126,8 @@ class DeepQNetwork(LoggableMixin):
 
 
     def predict(self, input):
-        return session.run(self.output_layer, { self.input: input })
+        # import pdb; pdb.set_trace()
+        return self.session.run(self.output_layer, { self.input: input })
 
 
     def copy(self, source):
