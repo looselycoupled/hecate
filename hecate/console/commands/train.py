@@ -69,10 +69,10 @@ class TrainCommand(LoggableMixin, Command):
                     "episodes": 100 if args.simple else 10000,
                     "steps": 10000 if args.simple else 500000,
                     "storage_path": "data",
-                    "upate_target_steps": 10000
+                    "update_target_steps": 5000
                 }
                 params["decay_steps"] = int(params["steps"] * .9)
-                params["populate_memory_steps"] = 1000 if args.simple else 10000
+                params["populate_memory_steps"] = 1000 if args.simple else 100000
                 agent = Agent(sess, args.game, **params)
                 agent.train()
 

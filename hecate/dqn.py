@@ -129,7 +129,6 @@ class DeepQNetwork(LoggableMixin):
 
 
     def copy(self, source):
-        print("COPYING TO TARGET NETWORK")
         external_vars = sorted(
             [v for v in tf.trainable_variables() if v.name.startswith(source.name)],
             key=lambda item: item.name

@@ -7,8 +7,10 @@ import time
 
 import os
 import random
+from collections import Counter
 
 import gym
+from gym.wrappers import Monitor
 import tensorflow as tf
 import numpy as np
 import tqdm
@@ -113,7 +115,7 @@ class Agent(LoggableMixin):
         steps=50000,
         decay_steps=10000,
         populate_memory_steps=1000,
-        upate_target_steps=10000,
+        update_target_steps=5000,
         storage_path="data",
         verbose=True,
     ):
@@ -125,7 +127,7 @@ class Agent(LoggableMixin):
         self.steps = steps
         self.decay_steps = decay_steps
         self.populate_memory_steps = populate_memory_steps
-        self.upate_target_steps = upate_target_steps
+        self.update_target_steps = update_target_steps
         self.dirs = StorageConfig(storage_path, game)
 
         self.replay_buffer = ReplayBuffer(2 * populate_memory_steps)
@@ -152,7 +154,8 @@ class Agent(LoggableMixin):
         self.logger.info("checkpoint dir: {}".format(self.dirs.checkpoint))
         self.logger.info("monitoring dir: {}".format(self.dirs.monitoring))
         self.logger.info("summary dir: {}".format(self.dirs.summary))
-        self.logger.info("")
+        for item in ["episodes","steps","populate_memory_steps","decay_steps","update_target_steps"]:
+            self.logger.info("{}: {}".format(item, getattr(self, item)))
 
 
     def _load_checkpoint(self):
@@ -169,6 +172,14 @@ class Agent(LoggableMixin):
         self.env = _get_environment(self.game)
         self.action_size = self.env.action_space.n
         self.action_space = list(range(self.action_size))
+
+    def _add_monitor(self):
+        self.env = Monitor(
+            self.env,
+            directory=self.dirs.monitoring,
+            video_callable=lambda count: self.step_count % 500 == 0,
+            resume=True
+        )
 
     def _init_image_wrangler(self):
         self.image_placeholder = tf.placeholder(shape=INPUT_SHAPE, dtype=tf.uint8)
@@ -225,17 +236,18 @@ class Agent(LoggableMixin):
         self.logger.info("_populate_replay_memory: populated ({}) in {}".format(len(self.replay_buffer), t))
 
 
-    def _choose_action(self, episode_num):
+    def _choose_action(self, episode_num, state, network):
         if random.random() < self.epsilon:
             return random.randrange(self.action_size)
 
-        # TODO: for now just return random instead of policy choice
-        return random.randrange(self.action_size)
+        action_values = network.predict([state])[0]
+        return np.argmax(action_values)
 
     def train(self):
         self._init_env()
         self._log_configuration()
         self._populate_replay_memory()
+        self._add_monitor()
         total_reward = 0
 
         print("CREATING MODELS")
@@ -255,31 +267,30 @@ class Agent(LoggableMixin):
 
             with Timer() as episode_timer:
                 previous_state = self.wrangle_image(self.env.reset())
-                # # it's annoying, but conv2d requires channel information so we
-                # # are just duplicating the layers
-                # previous_state = np.stack([previous_state] * 4, axis=2)
                 step = 0
                 rewards = 0
+                chosen_actions = []
 
                 while True:
                     self.step_count += 1
                     step +=1
-
-                    action = self._choose_action(episode_num)
+                    action = self._choose_action(episode_num, previous_state, target_network)
+                    chosen_actions.append(action)
 
                     # frame skipping
                     skipped_rewards = 0
-                    for _ in range(self.frame_skip_length):
-                        results = self.env.step(action)
+                    for _ in range(self.frame_skip_length + 1):
+                        results = list(self.env.step(action) + (previous_state, action))
                         skipped_rewards += results[1]
+                        results[1] = skipped_rewards
+                        results = tuple(results)
                         if results[2] is True:
                             break
 
 
                     # TODO: abstract this out (repetative code)
-                    results = self.env.step(action) + (previous_state, action)
                     record = dict(zip(STEP_RESULT_FIELDS, results))
-                    record["reward"] = _fix_reward(record["reward"] + skipped_rewards)
+                    record["reward"] = _fix_reward(record["reward"])
                     record["state"] = self.wrangle_image(record["state"])
                     # record["state"] = np.stack([record["state"]] * 4, axis=2)
 
@@ -309,8 +320,8 @@ class Agent(LoggableMixin):
                     other_network.train(batch_states, batch_labels, batch_actions)
 
                     # periodically update target network to keep training stable
-                    # TODO: decide on final value... 5000 for testing
-                    if self.step_count % 5000 == 0:
+                    if self.step_count % self.update_target_steps == 0:
+                        self.logger.info("Copying model variables to target network")
                         target_network.copy(other_network)
 
                     if record["game_over"] or self.step_count >= self.steps:
@@ -324,6 +335,7 @@ class Agent(LoggableMixin):
                 self.logger.info("Episode Steps: {}".format(step))
                 self.logger.info("Total Steps: {}".format(self.step_count))
                 self.logger.info("Total Reward: {}".format(total_reward))
+                # self.logger.info("Chosen Actions: {}".format(Counter(chosen_actions)))
                 self.logger.info("")
 
             if self.step_count >= self.steps:
