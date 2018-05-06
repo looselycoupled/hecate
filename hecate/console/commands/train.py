@@ -48,7 +48,7 @@ class TrainCommand(LoggableMixin, Command):
         # Steps for training
         ('-s', '--steps'): {
             'type': int,
-            'default': 10000,
+            'default': 500000,
             'help': 'steps for training',
         },
 
@@ -72,13 +72,13 @@ class TrainCommand(LoggableMixin, Command):
             with tf.Session() as sess:
                 params = {
                     "episodes": 2000 if args.simple else 10000,
-                    "steps": 40000 if args.simple else 500000,
+                    "steps": 40000 if args.simple else args.steps,
                     "storage_path": "data",
                     "update_target_steps": 5000,
                     "verbose": args.verbose,
                 }
                 params["decay_steps"] = int(params["steps"] * .9)
-                params["populate_memory_steps"] = 20000 if args.simple else 100000
+                params["populate_memory_steps"] = 20000 if args.simple else int(args.steps * .5)
                 agent = Agent(sess, args.game, **params)
                 agent.train()
 
