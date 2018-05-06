@@ -1,3 +1,7 @@
+# TF Related
+*.lan
+data/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -100,8 +104,8 @@ ENV/
 # mypy
 .mypy_cache/
 
-# Mantle internal
-mantle.yaml
+# Hecate internal
+hecate.yaml
 fixture-maker.py
 scripts/
 
@@ -114,4 +118,3 @@ scripts/
 
 # Celery related
 celerybeat.pid
-
