@@ -308,9 +308,6 @@ class Agent(LoggableMixin):
                 rewards = 0
                 chosen_actions = []
 
-                original_rewards = []
-                fixed_rewards = []
-
                 while True:
                     self.step_count += 1
                     step +=1
@@ -333,11 +330,7 @@ class Agent(LoggableMixin):
 
                     # TODO: abstract this out (repetative code)
                     record = dict(zip(STEP_RESULT_FIELDS, results))
-                    original_rewards.append(record["reward"])
-
                     record["reward"] = _fix_reward(record["reward"])
-                    fixed_rewards.append(record["reward"])
-
                     record["state"] = self.wrangle_image(record["state"])
                     # record["state"] = np.stack([record["state"]] * 4, axis=2)
 
@@ -345,7 +338,7 @@ class Agent(LoggableMixin):
                     previous_state = record["state"]
                     rewards += record["reward"]
 
-                    # TODO: train model on random mini batch
+                    # train model on random mini batch
                     batch_dicts = self.replay_buffer.sample()
                     batch = [
                             (item["state"], item["reward"], item["game_over"], item["extras"], item["previous_state"], item["action"])
@@ -375,7 +368,6 @@ class Agent(LoggableMixin):
                         self.summary_writer.add_summary(summary, self.step_count)
                         self.summary_writer.flush()
 
-
                     # periodically update target network to keep training stable
                     if self.step_count % self.update_target_steps == 0:
                         self.logger.info("Copying model variables to target network")
@@ -385,20 +377,20 @@ class Agent(LoggableMixin):
                         break
 
             total_reward += rewards
-            if not (fixed_rewards == original_rewards):
-                print("NOT THE SAME:\n{}\n{}".format(original_rewards, fixed_rewards))
 
             self.write_episodic_summaries(rewards, step, episode_random_actions)
             self.test_hold_out_buffer(other_network)
 
-            self.logger.info("Episode {} completed {} steps in {} ({})".format(self.episode_num, step, episode_timer, rewards))
             if self.verbose:
+                self.logger.info("Episode {} completed in {}".format(episode_num, episode_timer))
                 self.logger.info("Episode Reward: {}".format(rewards))
                 self.logger.info("Episode Steps: {}".format(step))
                 self.logger.info("Total Steps: {}".format(self.step_count))
                 self.logger.info("Total Reward: {}".format(total_reward))
-                # self.logger.info("Chosen Actions: {}".format(Counter(chosen_actions)))
                 self.logger.info("")
+            else:
+                report = {"steps": step, "reward": rewards, "time": str(episode_timer)}
+                self.logger.info("Episode {}: {}".format(self.episode_num, report))
 
             if self.step_count >= self.steps:
                 break
