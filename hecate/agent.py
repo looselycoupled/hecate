@@ -80,6 +80,14 @@ def _get_environment(name="Breakout-v0"):
     env = gym.envs.make(name)
     return env
 
+def _get_frame_skip_length(name):
+    """
+    From Paper: We use k = 4 for all games except Space Invaders
+    """
+    if name == "SpaceInvaders-v0":
+        return 2
+    return 3
+
 def _fix_reward(reward):
     """
     From: Playing atari with deep reinforcement learning (page 6)
@@ -112,6 +120,7 @@ class Agent(LoggableMixin):
         super(Agent, self).__init__()
         self.session = session
         self.game = game
+        self.frame_skip_length = _get_frame_skip_length(game)
         self.episodes = episodes
         self.steps = steps
         self.decay_steps = decay_steps
@@ -177,7 +186,11 @@ class Agent(LoggableMixin):
         return self._epsilon_schedule[self.step_count - 1]
 
     def wrangle_image(self, image):
-        return self.session.run(self.image_wrangler, {self.image_placeholder: image})
+        processed_image =  self.session.run(
+            self.image_wrangler,
+            {self.image_placeholder: image}
+        )
+        return  np.stack([processed_image] * 1, axis=2)
 
     def _populate_replay_memory(self):
         """
@@ -191,7 +204,7 @@ class Agent(LoggableMixin):
 
         with Timer() as t:
             previous_state = self.wrangle_image(self.env.reset())
-            previous_state = np.stack([previous_state] * 4, axis=2)
+            # previous_state = np.stack([previous_state] * 4, axis=2)
 
             for step in tqdm.tqdm(range(self.populate_memory_steps)):
                 action = random.randrange(self.action_size)
@@ -200,12 +213,12 @@ class Agent(LoggableMixin):
                 record = dict(zip(STEP_RESULT_FIELDS, results))
                 record["reward"] = _fix_reward(record["reward"])
                 record["state"] = self.wrangle_image(record["state"])
-                record["state"] =np.stack([record["state"]] * 4, axis=2)
+                # record["state"] =np.stack([record["state"]] * 4, axis=2)
                 self.replay_buffer.append(record)
 
                 if record["game_over"]:
                     previous_state = self.wrangle_image(self.env.reset())
-                    previous_state = np.stack([previous_state] * 4, axis=2)
+                    # previous_state = np.stack([previous_state] * 4, axis=2)
                 else:
                     previous_state = record["state"]
 
@@ -242,7 +255,9 @@ class Agent(LoggableMixin):
 
             with Timer() as episode_timer:
                 previous_state = self.wrangle_image(self.env.reset())
-                previous_state = np.stack([previous_state] * 4, axis=2)
+                # # it's annoying, but conv2d requires channel information so we
+                # # are just duplicating the layers
+                # previous_state = np.stack([previous_state] * 4, axis=2)
                 step = 0
                 rewards = 0
 
@@ -252,12 +267,21 @@ class Agent(LoggableMixin):
 
                     action = self._choose_action(episode_num)
 
+                    # frame skipping
+                    skipped_rewards = 0
+                    for _ in range(self.frame_skip_length):
+                        results = self.env.step(action)
+                        skipped_rewards += results[1]
+                        if results[2] is True:
+                            break
+
+
                     # TODO: abstract this out (repetative code)
                     results = self.env.step(action) + (previous_state, action)
                     record = dict(zip(STEP_RESULT_FIELDS, results))
-                    record["reward"] = _fix_reward(record["reward"])
+                    record["reward"] = _fix_reward(record["reward"] + skipped_rewards)
                     record["state"] = self.wrangle_image(record["state"])
-                    record["state"] =np.stack([record["state"]] * 4, axis=2)
+                    # record["state"] = np.stack([record["state"]] * 4, axis=2)
 
                     self.replay_buffer.append(record)
                     previous_state = record["state"]
