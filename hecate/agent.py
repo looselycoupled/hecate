@@ -112,7 +112,7 @@ class Agent(LoggableMixin):
         session,
         game,
         episodes=None,
-        steps=50000,
+        max_steps=50000,
         decay_steps=10000,
         populate_memory_steps=1000,
         update_target_steps=5000,
@@ -124,7 +124,7 @@ class Agent(LoggableMixin):
         self.game = game
         self.frame_skip_length = _get_frame_skip_length(game)
         self.episodes = episodes
-        self.steps = steps
+        self.max_steps = max_steps
         self.decay_steps = decay_steps
         self.populate_memory_steps = populate_memory_steps
         self.update_target_steps = update_target_steps
@@ -155,7 +155,7 @@ class Agent(LoggableMixin):
         self.logger.info("checkpoint dir: {}".format(self.dirs.checkpoint))
         self.logger.info("monitoring dir: {}".format(self.dirs.monitoring))
         self.logger.info("summary dir: {}".format(self.dirs.summary))
-        for item in ["episodes","steps","populate_memory_steps","decay_steps","update_target_steps"]:
+        for item in ["episodes","max_steps","populate_memory_steps","decay_steps","update_target_steps"]:
             self.logger.info("{}: {}".format(item, getattr(self, item)))
 
 
@@ -178,7 +178,7 @@ class Agent(LoggableMixin):
         self.env = Monitor(
             self.env,
             directory=self.dirs.monitoring,
-            video_callable=lambda count: self.step_count % 500 == 0,
+            video_callable=lambda count: self.step_count % 5000 == 0,
             resume=True
         )
 
@@ -373,7 +373,7 @@ class Agent(LoggableMixin):
                         self.logger.info("Copying model variables to target network")
                         target_network.copy(other_network)
 
-                    if record["game_over"] or self.step_count >= self.steps:
+                    if record["game_over"] or self.step_count >= self.max_steps:
                         break
 
             total_reward += rewards
@@ -392,7 +392,7 @@ class Agent(LoggableMixin):
                 report = {"steps": step, "reward": rewards, "time": str(episode_timer)}
                 self.logger.info("Episode {}: {}".format(self.episode_num, report))
 
-            if self.step_count >= self.steps:
+            if self.step_count >= self.max_steps:
                 break
 
 
