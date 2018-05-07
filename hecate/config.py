@@ -31,7 +31,7 @@ from confire import environ_setting
 
 class StorageConfig(object):
     def __init__(self, base, game, network):
-        dir_name = "{}-{}-{}".format(game, network.__name__, datetime.now().strftime("%m-%d-%H:%M:%S"))
+        dir_name = "{}-{}-{}".format(game, network.__name__, datetime.now().strftime("%Y%m%d-%H%M%S"))
         self.base = os.path.join(base, dir_name)
         self.checkpoint = os.path.join(self.base, "checkpoints")
         self.summary = os.path.join(self.base, "summary")

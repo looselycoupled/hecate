@@ -405,7 +405,7 @@ class Agent(LoggableMixin):
             if self.step_count >= self.max_steps:
                 break
 
-
+        self.logger.info("Tensorboard command: tensorboard --logdir=\"{}\"".format(self.dirs.summary))
 
 
 
