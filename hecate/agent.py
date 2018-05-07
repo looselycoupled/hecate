@@ -178,7 +178,7 @@ class Agent(LoggableMixin):
         self.env = Monitor(
             self.env,
             directory=self.dirs.monitoring,
-            video_callable=lambda count: self.step_count % 5000 == 0,
+            video_callable=lambda episode_count: episode_count % 250 == 0,
             resume=True
         )
 
@@ -389,7 +389,7 @@ class Agent(LoggableMixin):
                 self.logger.info("Total Reward: {}".format(total_reward))
                 self.logger.info("")
             else:
-                report = {"steps": step, "reward": rewards, "time": str(episode_timer)}
+                report = {"steps": step, "reward": rewards, "time": str(episode_timer), "total_steps": self.step_count}
                 self.logger.info("Episode {}: {}".format(self.episode_num, report))
 
             if self.step_count >= self.max_steps:

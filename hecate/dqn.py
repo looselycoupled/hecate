@@ -47,7 +47,7 @@ class DeepQNetwork(LoggableMixin):
             # The first hidden layer convolves 16 8 × 8 filters with stride 4 with
             # the input image and applies a rectifier nonlinearity [10, 18].
             conv_layer_1 = tf.layers.conv2d(
-                self.input,
+                self.input / 255.0,
                 filters=16,
                 kernel_size=(8, 8),
                 strides=4,
