@@ -40,7 +40,7 @@ class DeepQNetwork(LoggableMixin):
             # https://www.tensorflow.org/api_docs/python/tf/layers/dense
 
             # placeholders
-            self.input = tf.placeholder(shape=[None, 84, 84, 1], dtype=tf.float32, name="input")
+            self.input = tf.placeholder(shape=[None, 84, 84, 4], dtype=tf.float32, name="input")
             self.labels = tf.placeholder(shape=[None], dtype=tf.uint8, name="labels")
             self.actions = tf.placeholder(shape=[None], dtype=tf.uint8, name="actions")
 
@@ -170,7 +170,7 @@ class DeepQNetwork2015(DeepQNetwork):
             # https://www.tensorflow.org/api_docs/python/tf/layers/dense
 
             # placeholders
-            self.input = tf.placeholder(shape=[None, 84, 84, 1], dtype=tf.float32, name="input")
+            self.input = tf.placeholder(shape=[None, 84, 84, 4], dtype=tf.float32, name="input")
             self.labels = tf.placeholder(shape=[None], dtype=tf.uint8, name="labels")
             self.actions = tf.placeholder(shape=[None], dtype=tf.uint8, name="actions")
 

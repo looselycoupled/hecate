@@ -71,7 +71,8 @@ PAPER_PARAMETERS = {
 }
 
 DISCOUNT_RATE = .99
-
+STATE_HISTORY_LENGTH = 4
+STACK_HISTORY = True
 STEP_RESULT_FIELDS = ["state", "reward", "game_over", "extras", "previous_state", "action"]
 
 ##########################################################################
@@ -229,24 +230,68 @@ class Agent(LoggableMixin):
         self.logger.info("_populate_replay_memory: populating memory replay buffer")
 
         with Timer() as t:
-            previous_state = self.wrangle_image(self.env.reset())
-            # previous_state = np.stack([previous_state] * 4, axis=2)
+            if STACK_HISTORY:
+                # setup first previous state
+                previous_state = []
+                previous_state.append(self.wrangle_image(self.env.reset()))
+                for _ in range(STATE_HISTORY_LENGTH - 1):
+                    results = self.env.step(0)
+                    previous_state.append(self.wrangle_image(results[0]))
 
-            for step in tqdm.tqdm(range(steps)):
-                action = random.randrange(self.action_size)
-                results = self.env.step(action) + (previous_state, action)
+                # populate replay buffer
+                for step in tqdm.tqdm(range(steps)):
 
-                record = dict(zip(STEP_RESULT_FIELDS, results))
-                record["reward"] = _fix_reward(record["reward"])
-                record["state"] = self.wrangle_image(record["state"])
-                # record["state"] =np.stack([record["state"]] * 4, axis=2)
-                buffer.append(record)
+                    new_state = []
+                    skipped_rewards = 0
 
-                if record["game_over"]:
-                    previous_state = self.wrangle_image(self.env.reset())
-                    # previous_state = np.stack([previous_state] * 4, axis=2)
-                else:
-                    previous_state = record["state"]
+                    # create stacked history of 4 steps for new state
+                    action = random.randrange(self.action_size)
+                    for _ in range(STATE_HISTORY_LENGTH):
+                        results = self.env.step(action)
+                        new_state.append(self.wrangle_image(results[0]))
+                        skipped_rewards += results[1]
+
+                        # break out of loop if game over
+                        if results[2] is True:
+                            break
+
+
+                    results = results  + (previous_state, action)
+                    record = dict(zip(STEP_RESULT_FIELDS, results))
+                    record["reward"] = _fix_reward(skipped_rewards)
+                    record["state"] = new_state
+
+                    if record["game_over"]:
+                        previous_state = []
+                        previous_state.append(self.wrangle_image(self.env.reset()))
+                        for _ in range(STATE_HISTORY_LENGTH - 1):
+                            results = self.env.step(0)
+                            previous_state.append(self.wrangle_image(results[0]))
+                    else:
+                        buffer.append(record)
+                        previous_state = record["state"]
+
+
+
+            else:
+                previous_state = self.wrangle_image(self.env.reset())
+                previous_state = np.stack([previous_state] * 4, axis=2)
+
+                for step in tqdm.tqdm(range(steps)):
+                    action = random.randrange(self.action_size)
+                    results = self.env.step(action) + (previous_state, action)
+
+                    record = dict(zip(STEP_RESULT_FIELDS, results))
+                    record["reward"] = _fix_reward(record["reward"])
+                    record["state"] = self.wrangle_image(record["state"])
+                    record["state"] =np.stack([record["state"]] * 4, axis=2)
+                    buffer.append(record)
+
+                    if record["game_over"]:
+                        previous_state = self.wrangle_image(self.env.reset())
+                        # previous_state = np.stack([previous_state] * 4, axis=2)
+                    else:
+                        previous_state = record["state"]
 
         self.logger.info("_populate_replay_memory: populated ({}) in {}".format(len(buffer), t))
 
@@ -295,6 +340,7 @@ class Agent(LoggableMixin):
         self._add_monitor()
         self._init_summary_writer()
         total_reward = 0
+        state_buffer = []
 
         print("CREATING MODELS")
         other_network = self.NetworkModel(self.session, "other_network", self.action_size)
@@ -313,7 +359,17 @@ class Agent(LoggableMixin):
                 self._save_checkpoint()
 
             with Timer() as episode_timer:
-                previous_state = self.wrangle_image(self.env.reset())
+                # create previous state history (we use a stacked history of 4 frames as previous state)
+                if STACK_HISTORY:
+                    previous_state = []
+                    previous_state.append(self.wrangle_image(self.env.reset()))
+                    for _ in range(STATE_HISTORY_LENGTH - 1):
+                        results = self.env.step(0)
+                        previous_state.append(self.wrangle_image(results[0]))
+                else:
+                    previous_state = self.wrangle_image(self.env.reset())
+                    previous_state = np.stack([previous_state] * 4, axis=2)
+
                 step = 0
                 rewards = 0
                 chosen_actions = []
@@ -326,23 +382,32 @@ class Agent(LoggableMixin):
                     episode_random_actions += int(is_random)
                     chosen_actions.append(action)
 
-                    # frame skipping
+                    # frame skipping and stacking of state history
                     skipped_rewards = 0
+                    new_state = []
+
                     for _ in range(self.frame_skip_length + 1):
                         results = list(self.env.step(action) + (previous_state, action))
+                        new_state.append(self.wrangle_image(results[0]))
                         skipped_rewards += results[1]
                         results[1] = skipped_rewards
                         results = tuple(results)
+
+                        # break out of loop if game over
                         if results[2] is True:
                             break
-                    # results = list(self.env.step(action) + (previous_state, action))
 
+                    # reset env if game over
+                    if results[2] is True:
+                        break
 
-                    # TODO: abstract this out (repetative code)
                     record = dict(zip(STEP_RESULT_FIELDS, results))
                     record["reward"] = _fix_reward(record["reward"])
-                    record["state"] = self.wrangle_image(record["state"])
-                    # record["state"] = np.stack([record["state"]] * 4, axis=2)
+
+                    if STACK_HISTORY:
+                        record["state"] = new_state
+                    else:
+                        record["state"] = np.stack([new_state[-1]] * 4, axis=2)
 
                     self.replay_buffer.append(record)
                     previous_state = record["state"]
@@ -355,6 +420,8 @@ class Agent(LoggableMixin):
                             for item in batch_dicts
                         ]
                     batch_states, batch_rewards, batch_game_overs, _, batch_next_states, batch_actions = list(map(np.array, zip(*batch)))
+
+                    import pdb; pdb.set_trace()
 
                     # calculate action values of next states
                     batch_predicted_action_values = target_network.predict(batch_next_states)
