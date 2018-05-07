@@ -19,7 +19,7 @@ import pandas as pd
 from hecate.utils.mixins import LoggableMixin
 from hecate.utils.timer import Timer
 from hecate.replay_buffer import ReplayBuffer
-from hecate.dqn import DeepQNetwork
+from hecate.dqn import DeepQNetwork, DeepQNetwork2015
 from hecate.config import StorageConfig
 
 
@@ -78,6 +78,13 @@ STEP_RESULT_FIELDS = ["state", "reward", "game_over", "extras", "previous_state"
 # Helpers
 ##########################################################################
 
+def _get_network_by_year(year):
+    if year == 2013:
+        return DeepQNetwork
+    if year == 2015:
+        return DeepQNetwork2015
+    raise Exception("Invalid year for model research: {}".format(year))
+
 def _get_environment(name="Breakout-v0"):
     env = gym.envs.make(name)
     return env
@@ -117,6 +124,7 @@ class Agent(LoggableMixin):
         populate_memory_steps=1000,
         update_target_steps=5000,
         storage_path="data",
+        model_year=2013,
         verbose=False,
     ):
         super(Agent, self).__init__()
@@ -129,6 +137,7 @@ class Agent(LoggableMixin):
         self.populate_memory_steps = populate_memory_steps
         self.update_target_steps = update_target_steps
         self.dirs = StorageConfig(storage_path, game)
+        self.NetworkModel = _get_network_by_year(model_year)
 
         self.hold_out_buffer = ReplayBuffer(2000)
         self.replay_buffer = ReplayBuffer(2 * populate_memory_steps)
@@ -152,6 +161,7 @@ class Agent(LoggableMixin):
         self.logger.info("="*40)
         self.logger.info("game: {}".format(self.game))
         self.logger.info("action_space: {}".format(self.action_space))
+        self.logger.info("network model: {}".format(self.NetworkModel.__name__))
         self.logger.info("checkpoint dir: {}".format(self.dirs.checkpoint))
         self.logger.info("monitoring dir: {}".format(self.dirs.monitoring))
         self.logger.info("summary dir: {}".format(self.dirs.summary))
@@ -287,8 +297,8 @@ class Agent(LoggableMixin):
         total_reward = 0
 
         print("CREATING MODELS")
-        other_network = DeepQNetwork(self.session, "other_network", self.action_size)
-        target_network = DeepQNetwork(self.session, "target_network", self.action_size)
+        other_network = self.NetworkModel(self.session, "other_network", self.action_size)
+        target_network = self.NetworkModel(self.session, "target_network", self.action_size)
 
         self._load_checkpoint()
         self.session.run(tf.global_variables_initializer())

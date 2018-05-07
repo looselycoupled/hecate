@@ -52,6 +52,14 @@ class TrainCommand(LoggableMixin, Command):
             'help': 'steps for training',
         },
 
+        # Steps for training
+        ('-m', '--model_year'): {
+            'type': int,
+            'default': 2013,
+            'choices': (2013, 2015),
+            'help': 'year of published model',
+        },
+
         # Game to train on
         '--game': {
             'default': 'Breakout-v0',
@@ -76,6 +84,7 @@ class TrainCommand(LoggableMixin, Command):
                     "storage_path": "data",
                     "update_target_steps": 5000,
                     "verbose": args.verbose,
+                    "model_year": args.model_year,
                 }
                 params["decay_steps"] = int(params["max_steps"] * .9)
                 params["populate_memory_steps"] = 20000 if args.simple else int(args.max_steps * .5)
