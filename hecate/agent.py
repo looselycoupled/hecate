@@ -136,8 +136,8 @@ class Agent(LoggableMixin):
         self.decay_steps = decay_steps
         self.populate_memory_steps = populate_memory_steps
         self.update_target_steps = update_target_steps
-        self.dirs = StorageConfig(storage_path, game)
         self.NetworkModel = _get_network_by_year(model_year)
+        self.dirs = StorageConfig(storage_path, game, self.NetworkModel)
 
         self.hold_out_buffer = ReplayBuffer(2000)
         self.replay_buffer = ReplayBuffer(2 * populate_memory_steps)

@@ -19,18 +19,20 @@ primary configuration module for Anemoi project
 ## Imports
 ##########################################################################
 
+import os
+from datetime import datetime
+
 from confire import Configuration
 from confire import environ_setting
-import os
-
 
 ##########################################################################
 ## Storage Configuration
 ##########################################################################
 
 class StorageConfig(object):
-    def __init__(self, base, game):
-        self.base = os.path.join(base, game)
+    def __init__(self, base, game, network):
+        dir_name = "{}-{}-{}".format(game, network.__name__, datetime.now().strftime("%m-%d-%H:%M:%S"))
+        self.base = os.path.join(base, dir_name)
         self.checkpoint = os.path.join(self.base, "checkpoints")
         self.summary = os.path.join(self.base, "summary")
         self.monitoring = os.path.join(self.base, "monitoring")
