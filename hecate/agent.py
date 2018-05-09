@@ -217,7 +217,7 @@ class Agent(LoggableMixin):
             self.image_wrangler,
             {self.image_placeholder: image}
         )
-        return  np.stack([processed_image] * 1, axis=2)
+        return processed_image # 84x84
 
     def _populate_replay_memory(self, buffer, steps):
         """
@@ -300,7 +300,7 @@ class Agent(LoggableMixin):
         if random.random() < self.epsilon:
             return random.randrange(self.action_size), True
 
-        action_values = network.predict([state])[0]
+        action_values = network.predict([np.transpose(np.array(state), (1, 2, 0))])[0]
         return np.argmax(action_values), False
 
     def _init_summary_writer(self):
@@ -321,7 +321,9 @@ class Agent(LoggableMixin):
     def test_hold_out_buffer(self, network):
         if not hasattr(self, "_hold_out_states"):
             batch_replays = self.hold_out_buffer.buffer
-            self._hold_out_states = np.array([replay["state"] for replay in batch_replays])
+            replays = np.array([replay["state"] for replay in batch_replays])
+            self._hold_out_states = np.transpose(replays, (0, 2, 3, 1))
+
 
         batch_predicted_action_values = network.predict(self._hold_out_states)
         avg_max_action_value = np.array(batch_predicted_action_values).max(axis=1).mean()
@@ -421,7 +423,9 @@ class Agent(LoggableMixin):
                         ]
                     batch_states, batch_rewards, batch_game_overs, _, batch_next_states, batch_actions = list(map(np.array, zip(*batch)))
 
-                    import pdb; pdb.set_trace()
+                    batch_states = np.transpose(batch_states, (0, 2, 3, 1))
+                    batch_next_states = np.transpose(batch_next_states, (0, 2, 3, 1))
+
 
                     # calculate action values of next states
                     batch_predicted_action_values = target_network.predict(batch_next_states)
