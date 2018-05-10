@@ -196,8 +196,12 @@ class Agent(LoggableMixin):
         self.image_placeholder = tf.placeholder(shape=INPUT_SHAPE, dtype=tf.uint8)
         transform = tf.image.crop_to_bounding_box(self.image_placeholder, 34, 0, 160, 160)
         transform = tf.image.rgb_to_grayscale(transform)
-        transform = tf.image.resize_images(transform, OUTPUT_SHAPE, method=RESIZE_METHOD)
-        self.image_wrangler = tf.squeeze(transform)
+
+        # transform = tf.image.resize_images(transform, OUTPUT_SHAPE, method=RESIZE_METHOD)
+        # self.image_wrangler = tf.squeeze(transform)
+
+        self.image_wrangler = tf.image.resize_images(transform, OUTPUT_SHAPE, method=RESIZE_METHOD)
+        # self.image_wrangler = tf.squeeze(transform)
 
     @property
     def epsilon(self):
@@ -216,7 +220,9 @@ class Agent(LoggableMixin):
             self.image_wrangler,
             {self.image_placeholder: image}
         )
-        return  np.stack([processed_image] * 1, axis=2)
+        # import pdb; pdb.set_trace()
+        # return  np.stack([processed_image] * 1, axis=2)
+        return processed_image
 
     def _populate_replay_memory(self, buffer, steps):
         """
