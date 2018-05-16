@@ -2,8 +2,9 @@ import random
 
 class ReplayBuffer(object):
 
-    def __init__(self, size):
+    def __init__(self, size, name):
         self.size = size
+        self.name = name
         self.buffer = []
 
     def trim(self):

@@ -32,22 +32,23 @@ class DeepQNetwork(LoggableMixin):
         self.session = session
         self.name = name
         self.action_size = action_size
-        self._setup()
+        self._setup_network()
+        self._setup_training()
 
-    def _setup(self):
+    def _setup_network(self):
         with tf.variable_scope(self.name):
             # https://www.tensorflow.org/api_docs/python/tf/layers/conv2d
             # https://www.tensorflow.org/api_docs/python/tf/layers/dense
 
             # placeholders
-            self.input = tf.placeholder(shape=[None, 84, 84, 1], dtype=tf.float32, name="input")
-            self.labels = tf.placeholder(shape=[None], dtype=tf.uint8, name="labels")
-            self.actions = tf.placeholder(shape=[None], dtype=tf.uint8, name="actions")
+            self.input = tf.placeholder(shape=[None, 84, 84, 4], dtype=tf.uint8, name="input")
+            self.labels = tf.placeholder(shape=[None], dtype=tf.float32, name="labels")
+            self.actions = tf.placeholder(shape=[None], dtype=tf.int32, name="actions")
 
             # The first hidden layer convolves 16 8 × 8 filters with stride 4 with
             # the input image and applies a rectifier nonlinearity [10, 18].
             conv_layer_1 = tf.layers.conv2d(
-                self.input / 255.0,
+                tf.to_float(self.input) / 255.0,
                 filters=16,
                 kernel_size=(8, 8),
                 strides=4,
@@ -89,7 +90,14 @@ class DeepQNetwork(LoggableMixin):
             )
 
 
+    def _setup_training(self):
+        with tf.variable_scope(self.name):
             # training operations
+            indexes = tf.range(tf.shape(self.input)[0]) * tf.shape(self.output_layer)[1] + self.actions
+            fixed_action_values = tf.gather(
+                tf.reshape(self.output_layer, [-1]),
+                indexes
+            )
 
             # From paper:
             #   In these experiments, we used the RMSProp algorithm with minibatches of size 32.
@@ -102,18 +110,13 @@ class DeepQNetwork(LoggableMixin):
                 name='RMSProp'
             )
 
-            # fix actions from output_layer for training
-            # https://www.tensorflow.org/api_docs/python/tf/reduce_sum
-            fixed_action_values = tf.reduce_sum(
-                self.output_layer * tf.one_hot(self.actions, self.action_size),
-                axis=[1]
-            )
-
             # define loss function using labels and actions
             # https://www.tensorflow.org/api_docs/python/tf/losses/mean_squared_error
+            # self.loss = tf.losses.mean_squared_error(self.labels, fixed_action_values)
             self.loss = tf.losses.mean_squared_error(self.labels, fixed_action_values)
+            # self.losses = tf.squared_difference(self.labels, fixed_action_values)
+            # self.loss = tf.reduce_mean(self.losses)
 
-            # training/optimization function using above loss
             self.optimize = self._optimizer.minimize(self.loss)
 
 
@@ -164,20 +167,20 @@ class DeepQNetwork(LoggableMixin):
 # layer is a fully-connected linear layer with a single output for each valid action.
 class DeepQNetwork2015(DeepQNetwork):
 
-    def _setup(self):
+    def _setup_network(self):
         with tf.variable_scope(self.name):
             # https://www.tensorflow.org/api_docs/python/tf/layers/conv2d
             # https://www.tensorflow.org/api_docs/python/tf/layers/dense
 
             # placeholders
-            self.input = tf.placeholder(shape=[None, 84, 84, 1], dtype=tf.float32, name="input")
-            self.labels = tf.placeholder(shape=[None], dtype=tf.uint8, name="labels")
-            self.actions = tf.placeholder(shape=[None], dtype=tf.uint8, name="actions")
+            self.input = tf.placeholder(shape=[None, 84, 84, 4], dtype=tf.uint8, name="input")
+            self.labels = tf.placeholder(shape=[None], dtype=tf.float32, name="labels")
+            self.actions = tf.placeholder(shape=[None], dtype=tf.int32, name="actions")
 
             # The first hidden layer convolves 32 filters of 8x8 with
             # stride 4 with the input image and applies a rectifier nonlinearity.
             conv_layer_1 = tf.layers.conv2d(
-                self.input / 255.0,
+                tf.to_float(self.input) / 255.0,
                 filters=32,
                 kernel_size=(8, 8),
                 strides=4,
@@ -218,7 +221,7 @@ class DeepQNetwork2015(DeepQNetwork):
             # rectifier units.
             dense_layer_1 = tf.layers.dense(
                 flatten_layer,
-                256,
+                512,
                 activation=tf.nn.relu,
                 name="dense_layer_1",
             )
@@ -230,31 +233,3 @@ class DeepQNetwork2015(DeepQNetwork):
                 self.action_size,
                 name="output_layer"
             )
-
-
-            # training operations
-
-            # From paper:
-            #   In these experiments, we used the RMSProp algorithm with minibatches of size 32.
-            # https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
-            self._optimizer = tf.train.RMSPropOptimizer(
-                0.00025, # learning_rate,
-                decay=0.99,
-                momentum=0.0,
-                epsilon=1e-6,
-                name='RMSProp'
-            )
-
-            # fix actions from output_layer for training
-            # https://www.tensorflow.org/api_docs/python/tf/reduce_sum
-            fixed_action_values = tf.reduce_sum(
-                self.output_layer * tf.one_hot(self.actions, self.action_size),
-                axis=[1]
-            )
-
-            # define loss function using labels and actions
-            # https://www.tensorflow.org/api_docs/python/tf/losses/mean_squared_error
-            self.loss = tf.losses.mean_squared_error(self.labels, fixed_action_values)
-
-            # training/optimization function using above loss
-            self.optimize = self._optimizer.minimize(self.loss)
